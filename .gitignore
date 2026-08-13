@@ -1,1 +1,38 @@
+# Virtual environments
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Test / coverage cache
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+
+# IDE
 .idea/
+.vscode/
+
+# Git
+.git/
+.gitignore
+
+# Environment variables
+.env
+.env.*
+
+# OS files
+.DS_Store
+
+# Logs
+*.log
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
