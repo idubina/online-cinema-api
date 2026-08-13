@@ -16,10 +16,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
-from ..database import Base
-from ..validators import accounts as validators
-from ..core.security import hash_password, verify_password
-from ..core.utils import generate_secure_token
+from app.database import Base
+from app.validators import accounts as validators
+from app.core.security import hash_password, verify_password
+from app.core.utils import generate_secure_token
 
 
 class UserGroupEnum(str, enum.Enum):
