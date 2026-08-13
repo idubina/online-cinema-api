@@ -1,6 +1,6 @@
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, field_validator, ConfigDict
 
-from ..validators import accounts as accounts_validators
+from app.validators import accounts as accounts_validators
 
 
 class BaseEmailPasswordSchema(BaseModel):
@@ -22,3 +22,10 @@ class BaseEmailPasswordSchema(BaseModel):
 
 class UserRegistrationRequestSchema(BaseEmailPasswordSchema):
     pass
+
+
+class UserRegistrationResponseSchema(BaseModel):
+    id: int
+    email: EmailStr
+
+    model_config = ConfigDict(from_attributes=True)
