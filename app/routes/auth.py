@@ -1,7 +1,7 @@
 from fastapi import APIRouter, status
-from ..schemas import auth as auth_schemas
-from ..dependencies import SessionDep
-from ..services import auth as auth_services
+from app.schemas import auth as auth_schemas
+from app.dependencies import SessionDep
+from app.services import auth as auth_services
 
 router = APIRouter()
 
