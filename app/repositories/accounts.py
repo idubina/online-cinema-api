@@ -1,5 +1,7 @@
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.database import Base
 from app.models.accounts import (
     UserModel,
     UserGroupModel,
@@ -27,6 +29,19 @@ async def get_activation_token_by_token(db: AsyncSession, token):
     return await db.scalar(
         select(ActivationTokenModel).where(ActivationTokenModel.token == token)
     )
+
+
+async def get_reset_token_by_user_id(db: AsyncSession, user_id):
+    return await db.scalar(
+        select(PasswordResetTokenModel).where(
+            PasswordResetTokenModel.user_id == user_id,
+        )
+    )
+
+
+async def delete_item(db: AsyncSession, item: Base):
+    await db.delete(item)
+    await db.commit()
 
 
 async def create_user(db: AsyncSession, **user_data):
@@ -69,3 +84,16 @@ async def create_reset_token(db: AsyncSession, user_db: UserModel):
     new_reset_token = PasswordResetTokenModel(user_id=user_db.id)
     db.add(new_reset_token)
     await db.commit()
+
+
+async def reset_password(
+    db: AsyncSession, user: UserModel, password: str, token: PasswordResetTokenModel
+):
+    try:
+
+        user.password = password
+        await db.delete(token)
+        await db.commit()
+    except Exception as error:
+        await db.rollback()
+        raise error
