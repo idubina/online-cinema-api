@@ -29,3 +29,17 @@ async def activate_user(
         message="User account activated successfully."
     )
     return message
+
+
+@router.post(
+    "/password-reset/request/",
+    response_model=auth_schemas.MessageResponseSchema,
+)
+async def request_password_reset_token(
+    db: SessionDep, user_data: auth_schemas.PasswordResetRequestSchema
+):
+    await auth_services.request_reset_token(db=db, user_data=user_data)
+    message = auth_schemas.MessageResponseSchema(
+        message="If you are registered, you will receive an email with instructions."
+    )
+    return message
