@@ -5,6 +5,7 @@ from fastapi import HTTPException, status
 
 from app.schemas import auth as schemas
 from app.repositories import accounts
+from app.core.security import JWTManager
 
 
 async def create_user(
@@ -100,3 +101,37 @@ async def password_reset_complete(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while resetting the password.",
         )
+
+
+async def login_user(db: AsyncSession, user_data: schemas.UserLoginRequestSchema):
+    user_db = await accounts.get_user_by_email(db=db, email=user_data.email)
+
+    if user_db is None or not user_db.verify_password(raw_password=user_data.password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password.",
+        )
+
+    if not user_db.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account is not activated.",
+        )
+
+    try:
+        access_token = JWTManager.create_access_token(user_id=user_db.id)
+        refresh_token = JWTManager.create_refresh_token(user_id=user_db.id)
+        token_type = "bearer"
+        await accounts.save_refresh_token(
+            db=db, user_id=user_db.id, refresh_token=refresh_token
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while processing the request.",
+        )
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": token_type,
+    }

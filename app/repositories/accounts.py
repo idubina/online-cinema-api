@@ -1,13 +1,16 @@
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.database import Base
+
 from app.models.accounts import (
     UserModel,
     UserGroupModel,
     UserGroupEnum,
     ActivationTokenModel,
     PasswordResetTokenModel,
+    RefreshTokenModel,
 )
 
 
@@ -93,6 +96,20 @@ async def reset_password(
 
         user.password = password
         await db.delete(token)
+        await db.commit()
+    except Exception as error:
+        await db.rollback()
+        raise error
+
+
+async def save_refresh_token(db: AsyncSession, user_id: int, refresh_token: str):
+    try:
+        refresh_token_db = RefreshTokenModel.create(
+            user_id=user_id,
+            token=refresh_token,
+            days_valid=settings.REFRESH_TOKEN_EXPIRE_DAYS,
+        )
+        db.add(refresh_token_db)
         await db.commit()
     except Exception as error:
         await db.rollback()
