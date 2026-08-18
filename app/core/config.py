@@ -15,6 +15,13 @@ class Settings(BaseSettings):
     POSTGRES_TEST_HOST: str
     POSTGRES_TEST_PORT: int
 
+    SECRET_KEY_ACCESS: str
+    SECRET_KEY_REFRESH: str
+    JWT_SIGNING_ALGORITHM: str = "HS256"
+
+    ACCESS_TOKEN_EXPIRE_MINUTES: int
+    REFRESH_TOKEN_EXPIRE_DAYS: int
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
