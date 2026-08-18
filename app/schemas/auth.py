@@ -42,3 +42,7 @@ class MessageResponseSchema(BaseModel):
 
 class PasswordResetRequestSchema(BaseEmailSchema):
     pass
+
+
+class PasswordResetCompleteRequestSchema(BaseEmailPasswordSchema):
+    token: str
