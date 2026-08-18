@@ -38,3 +38,7 @@ class UserActivationRequestSchema(BaseEmailSchema):
 
 class MessageResponseSchema(BaseModel):
     message: str
+
+
+class PasswordResetRequestSchema(BaseEmailSchema):
+    pass
