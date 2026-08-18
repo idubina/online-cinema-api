@@ -3,16 +3,17 @@ from pydantic import BaseModel, EmailStr, field_validator, ConfigDict
 from app.validators import accounts as accounts_validators
 
 
-class BaseEmailPasswordSchema(BaseModel):
+class BaseEmailSchema(BaseModel):
     email: EmailStr
-    password: str
-
-    model_config = {"from_attributes": True}
 
     @field_validator("email")
     @classmethod
     def validate_email(cls, value):
         return value.lower()
+
+
+class BaseEmailPasswordSchema(BaseEmailSchema):
+    password: str
 
     @field_validator("password")
     @classmethod
@@ -29,3 +30,11 @@ class UserRegistrationResponseSchema(BaseModel):
     email: EmailStr
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class UserActivationRequestSchema(BaseEmailSchema):
+    token: str
+
+
+class MessageResponseSchema(BaseModel):
+    message: str
