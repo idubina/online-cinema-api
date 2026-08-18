@@ -34,6 +34,12 @@ async def get_activation_token_by_token(db: AsyncSession, token):
     )
 
 
+async def get_refresh_token_by_token(db: AsyncSession, token):
+    return await db.scalar(
+        select(RefreshTokenModel).where(RefreshTokenModel.token == token)
+    )
+
+
 async def get_reset_token_by_user_id(db: AsyncSession, user_id):
     return await db.scalar(
         select(PasswordResetTokenModel).where(
