@@ -1,6 +1,8 @@
-from fastapi import APIRouter, status
+from fastapi import APIRouter, status, BackgroundTasks
+
+from app.core.config import settings
 from app.schemas import auth as auth_schemas
-from app.dependencies import SessionDep
+from app.dependencies import SessionDep, EmailSenderDep
 from app.services import auth as auth_services
 
 router = APIRouter()
@@ -12,9 +14,23 @@ router = APIRouter()
     status_code=status.HTTP_201_CREATED,
 )
 async def register_user(
-    db: SessionDep, user_data: auth_schemas.UserRegistrationRequestSchema
+    db: SessionDep,
+    user_data: auth_schemas.UserRegistrationRequestSchema,
+    background_tasks: BackgroundTasks,
+    email_sender: EmailSenderDep,
 ):
-    return await auth_services.create_user(db=db, user_data=user_data)
+
+    user, activation_token = await auth_services.create_user(db=db, user_data=user_data)
+    activation_link = (
+        f"{settings.FRONTEND_URL}/activate" f"?token={activation_token.token}"
+    )
+
+    background_tasks.add_task(
+        email_sender.send_activation_email,
+        user.email,
+        activation_link,
+    )
+    return user
 
 
 @router.post(
@@ -22,9 +38,18 @@ async def register_user(
     response_model=auth_schemas.MessageResponseSchema,
 )
 async def activate_user(
-    db: SessionDep, user_data: auth_schemas.UserActivationRequestSchema
+    db: SessionDep,
+    user_data: auth_schemas.UserActivationRequestSchema,
+    background_tasks: BackgroundTasks,
+    email_sender: EmailSenderDep,
 ):
     await auth_services.activate_user(db=db, user_data=user_data)
+
+    background_tasks.add_task(
+        email_sender.send_activation_complete_email,
+        user_data.email,
+        f"{settings.FRONTEND_URL}/login",
+    )
     message = auth_schemas.MessageResponseSchema(
         message="User account activated successfully."
     )
@@ -36,9 +61,21 @@ async def activate_user(
     response_model=auth_schemas.MessageResponseSchema,
 )
 async def request_password_reset_token(
-    db: SessionDep, user_data: auth_schemas.PasswordResetRequestSchema
+    db: SessionDep,
+    user_data: auth_schemas.PasswordResetRequestSchema,
+    background_tasks: BackgroundTasks,
+    email_sender: EmailSenderDep,
 ):
-    await auth_services.request_reset_token(db=db, user_data=user_data)
+    reset_token = await auth_services.request_reset_token(db=db, user_data=user_data)
+
+    reset_link = f"{settings.FRONTEND_URL}/reset-password?token={reset_token.token}"
+
+    background_tasks.add_task(
+        email_sender.send_password_reset_email,
+        user_data.email,
+        reset_link,
+    )
+
     message = auth_schemas.MessageResponseSchema(
         message="If you are registered, you will receive an email with instructions."
     )
@@ -50,9 +87,17 @@ async def request_password_reset_token(
     response_model=auth_schemas.MessageResponseSchema,
 )
 async def reset_password(
-    db: SessionDep, user_data: auth_schemas.PasswordResetCompleteRequestSchema
+    db: SessionDep,
+    user_data: auth_schemas.PasswordResetCompleteRequestSchema,
+    background_tasks: BackgroundTasks,
+    email_sender: EmailSenderDep,
 ):
     await auth_services.password_reset_complete(db=db, user_data=user_data)
+    background_tasks.add_task(
+        email_sender.send_password_reset_complete_email,
+        user_data.email,
+        f"{settings.FRONTEND_URL}/login",
+    )
     message = auth_schemas.MessageResponseSchema(message="Password reset successfully.")
     return message
 

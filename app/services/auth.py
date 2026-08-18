@@ -21,8 +21,10 @@ async def create_user(
             detail=f"A user with this email {user_data.email} already exists.",
         )
     try:
-        user_db = await accounts.create_user(db=db, **user_data.model_dump())
-        return user_db
+        user_db, activation_token = await accounts.create_user(
+            db=db, **user_data.model_dump()
+        )
+        return user_db, activation_token
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -66,7 +68,8 @@ async def request_reset_token(
     if user_db is None or not user_db.is_active:
         return
 
-    await accounts.create_reset_token(db=db, user_db=user_db)
+    reset_token = await accounts.create_reset_token(db=db, user_db=user_db)
+    return reset_token
 
 
 async def password_reset_complete(
