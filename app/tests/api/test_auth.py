@@ -1,6 +1,8 @@
-import pytest
-from sqlalchemy import select
+from datetime import datetime, timezone, timedelta
 
+import pytest
+from sqlalchemy import select, delete
+from sqlalchemy.orm import joinedload
 
 from app.core.security import verify_password
 
@@ -9,9 +11,10 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
-from app.models.accounts import UserModel as User
+from app.models.accounts import UserModel as User, UserModel, ActivationTokenModel
+from app.tests.conftest import db_session
 
-REGISTER_URL = "/api/register/"
+REGISTER_URL = "/api/accounts/register/"
 
 pytestmark = pytest.mark.anyio
 
@@ -26,9 +29,7 @@ def registration_payload(
     }
 
 
-async def test_successful_registration(
-    client: AsyncClient,
-):
+async def test_successful_registration(client: AsyncClient, db_session: AsyncSession):
     response = await client.post(
         REGISTER_URL,
         json=registration_payload(),
@@ -40,6 +41,10 @@ async def test_successful_registration(
 
     assert data["id"] is not None
     assert data["email"] == "user@example.com"
+
+    user = await db_session.scalar(select(User).where(User.id == data["id"]))
+
+    assert not user.is_active
 
 
 async def test_invalid_email_returns_422(
@@ -151,3 +156,211 @@ async def test_password_hash_is_absent_from_response(
     assert "password" not in data
     assert "hashed_password" not in data
     assert "_hashed_password" not in data
+
+
+ACTIVATION_URL = "/api/accounts/activate/"
+
+
+async def test_activate_account_success(client: AsyncClient, db_session: AsyncSession):
+    """
+    Test successful activation of a user account.
+
+    Steps:
+    - Register a new user.
+    - Verify the user is inactive.
+    - Activate the user using the activation token.
+    - Verify the user is activated and the token is deleted.
+    """
+
+    user_data = registration_payload()
+
+    response = await client.post(
+        REGISTER_URL,
+        json=user_data,
+    )
+    assert response.status_code == 201
+
+    user = await db_session.scalar(
+        select(UserModel)
+        .options(joinedload(UserModel.activation_token))
+        .where(UserModel.email == user_data["email"])
+    )
+    assert user is not None
+    assert not user.is_active
+
+    assert user.activation_token is not None and user.activation_token.token is not None
+
+    activation_payload = {
+        "email": user_data["email"],
+        "token": user.activation_token.token,
+    }
+
+    activation_response = await client.post(ACTIVATION_URL, json=activation_payload)
+    assert activation_response.status_code == 200
+    assert (
+        activation_response.json()["message"] == "User account activated successfully."
+    )
+
+    user = await db_session.scalar(
+        select(UserModel)
+        .options(joinedload(UserModel.activation_token))
+        .where(UserModel.email == user_data["email"])
+    )
+    await db_session.refresh(user)
+    assert user.is_active
+
+    token = await db_session.scalar(
+        select(ActivationTokenModel).where(ActivationTokenModel.user_id == user.id)
+    )
+    assert token is None
+
+
+async def test_activate_user_with_expired_token(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """
+    Test activation with an expired token.
+
+    Ensures that the endpoint returns a 400 error when the activation token is expired.
+    Steps:
+    - Register a new user.
+    - Retrieve the user and their activation token.
+    - Manually set the token's expiration to a past date.
+    - Attempt to activate the account with the expired token.
+    - Verify that the response is a 400 error with the expected error message.
+    """
+    user_data = {
+        "email": "testuser@example.com",
+        "password": "StrongPassword123!",
+    }
+    response = await client.post(
+        REGISTER_URL,
+        json=user_data,
+    )
+    assert response.status_code == 201
+
+    user = await db_session.scalar(
+        select(UserModel).where(UserModel.email == user_data["email"])
+    )
+    assert user is not None
+    assert not user.is_active
+
+    activation_token = await db_session.scalar(
+        select(ActivationTokenModel).where(ActivationTokenModel.user_id == user.id)
+    )
+
+    assert activation_token is not None
+
+    activation_token.expires_at = datetime.now(timezone.utc) - timedelta(days=2)
+    await db_session.commit()
+
+    activation_payload = {
+        "email": user_data["email"],
+        "token": activation_token.token,
+    }
+    activation_response = await client.post(ACTIVATION_URL, json=activation_payload)
+
+    assert activation_response.status_code == 400
+    assert (
+        activation_response.json()["detail"] == "Invalid or expired activation token."
+    )
+
+
+async def test_activate_user_with_deleted_token(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """
+    Test activation with a deleted token.
+
+    Ensures that the endpoint returns a 400 error when the activation token has been deleted.
+
+    Steps:
+    - Register a new user.
+    - Verify that the user is created and inactive.
+    - Delete the activation token from the database.
+    - Attempt to activate the account using the deleted token.
+    - Verify that a 400 error is returned with the appropriate error message.
+    """
+    user_data = {
+        "email": "testuser@example.com",
+        "password": "StrongPassword123!",
+    }
+    response = await client.post(
+        REGISTER_URL,
+        json=user_data,
+    )
+    assert response.status_code == 201
+
+    user = await db_session.scalar(
+        select(UserModel).where(UserModel.email == user_data["email"])
+    )
+    assert user is not None
+    assert not user.is_active
+
+    activation_token = await db_session.scalar(
+        select(ActivationTokenModel).where(ActivationTokenModel.user_id == user.id)
+    )
+
+    assert activation_token is not None
+
+    token_value = activation_token.token
+
+    await db_session.execute(
+        delete(ActivationTokenModel).where(
+            ActivationTokenModel.id == activation_token.id
+        )
+    )
+    await db_session.commit()
+
+    activation_payload = {"email": user_data["email"], "token": token_value}
+    activation_response = await client.post(ACTIVATION_URL, json=activation_payload)
+    assert activation_response.status_code == 400
+    assert (
+        activation_response.json()["detail"] == "Invalid or expired activation token."
+    )
+
+
+async def test_activate_already_active_user(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """
+    Test activation of an already active user.
+
+    Ensures that the endpoint returns a 400 error if the user is already active.
+    Steps:
+    - Register a new user.
+    - Mark the user as active in the database.
+    - Attempt to activate the user using the activation token.
+    - Verify that a 400 error with the expected error message is returned.
+    """
+    user_data = {
+        "email": "testuser@example.com",
+        "password": "StrongPassword123!",
+    }
+    response = await client.post(
+        REGISTER_URL,
+        json=user_data,
+    )
+    assert response.status_code == 201
+
+    user = await db_session.scalar(
+        select(UserModel).where(UserModel.email == user_data["email"])
+    )
+    assert user is not None
+
+    user.is_active = True
+    await db_session.commit()
+
+    activation_token = await db_session.scalar(
+        select(ActivationTokenModel).where(ActivationTokenModel.user_id == user.id)
+    )
+
+    assert activation_token is not None
+
+    activation_payload = {
+        "email": user_data["email"],
+        "token": activation_token.token,
+    }
+    activation_response = await client.post(ACTIVATION_URL, json=activation_payload)
+    assert activation_response.status_code == 400
+    assert activation_response.json()["detail"] == "User account is already active."
