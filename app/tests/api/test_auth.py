@@ -1,12 +1,14 @@
 from datetime import datetime, timezone, timedelta
 from unittest.mock import patch
 
+import jwt
 import pytest
+from app.core.config import settings
 from sqlalchemy import select, delete, func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload
 
-from app.core.security import verify_password, JWTManager
+from app.core.security import verify_password, JWTManager, TokenType
 
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -924,3 +926,150 @@ async def test_login_user_commit_error(client: AsyncClient, db_session: AsyncSes
     assert (
         response.json()["detail"] == "An error occurred while processing the request."
     )
+
+
+REFRESH_ACCESS_TOKEN_URL = "/api/accounts/refresh/"
+
+
+def create_expired_test_refresh_token(user_id: int) -> str:
+    now = datetime.now(timezone.utc)
+
+    payload = {
+        "sub": str(user_id),
+        "type": TokenType.REFRESH,
+        "iat": now,
+        "exp": now - timedelta(days=1),
+    }
+
+    return jwt.encode(
+        payload,
+        settings.SECRET_KEY_REFRESH,
+        algorithm=settings.JWT_SIGNING_ALGORITHM,
+    )
+
+
+async def test_refresh_access_token_success(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """
+    Test successful access token refresh.
+
+    Validates that a new access token is returned when a valid refresh token is provided.
+    Steps:
+    - Create an active user in the database.
+    - Log in the user to obtain a refresh token.
+    - Use the refresh token to obtain a new access token.
+    - Verify that the new access token contains the correct user ID.
+    """
+    user_payload = {"email": "testuser@example.com", "password": "StrongPassword123!"}
+    user_group = await db_session.scalar(
+        select(UserGroupModel).where(UserGroupModel.name == UserGroupEnum.USER)
+    )
+    assert user_group is not None
+
+    user = UserModel.create(
+        email=user_payload["email"],
+        raw_password=user_payload["password"],
+        group_id=user_group.id,
+    )
+    user.is_active = True
+    db_session.add(user)
+    await db_session.commit()
+
+    login_payload = {
+        "email": user_payload["email"],
+        "password": user_payload["password"],
+    }
+    login_response = await client.post(LOGIN_URL, json=login_payload)
+    assert login_response.status_code == 200
+
+    login_data = login_response.json()
+    refresh_token = login_data["refresh_token"]
+
+    refresh_payload = {"refresh_token": refresh_token}
+    refresh_response = await client.post(REFRESH_ACCESS_TOKEN_URL, json=refresh_payload)
+    assert refresh_response.status_code == 200
+    refresh_data = refresh_response.json()
+    assert "access_token" in refresh_data
+    assert refresh_data["access_token"]
+
+    access_token_data = JWTManager.decode_access_token(refresh_data["access_token"])
+    assert access_token_data["sub"] == str(user.id)
+
+
+async def test_refresh_access_token_expired_token(client: AsyncClient):
+    """
+    Test refresh token with expired token.
+
+    Validates that a 400 status code and "Refresh token has expired." message are returned
+    when the refresh token is expired.
+    """
+    expired_token = create_expired_test_refresh_token(user_id=1)
+
+    refresh_payload = {"refresh_token": expired_token}
+    refresh_response = await client.post(REFRESH_ACCESS_TOKEN_URL, json=refresh_payload)
+
+    assert refresh_response.status_code == 400
+    assert refresh_response.json()["detail"] == "Refresh token has expired."
+
+
+async def test_refresh_access_token_token_not_found(client: AsyncClient):
+    """
+    Test refresh token when token is not found in the database.
+
+    Validates that a 401 status code and 'Refresh token not found.' message
+    are returned when the refresh token is not stored in the database.
+    """
+    refresh_token = JWTManager.create_refresh_token(user_id=1)
+    refresh_payload = {"refresh_token": refresh_token}
+    refresh_response = await client.post(REFRESH_ACCESS_TOKEN_URL, json=refresh_payload)
+
+    assert refresh_response.status_code == 401
+    assert refresh_response.json()["detail"] == "Refresh token not found."
+
+
+async def test_refresh_access_token_user_not_found(
+    client: AsyncClient,
+    db_session: AsyncSession,
+):
+    user_payload = {
+        "email": "testuser@example.com",
+        "password": "StrongPassword123!",
+    }
+
+    user_group = await db_session.scalar(
+        select(UserGroupModel).where(UserGroupModel.name == UserGroupEnum.USER)
+    )
+    assert user_group is not None
+
+    user = UserModel.create(
+        email=user_payload["email"],
+        raw_password=user_payload["password"],
+        group_id=user_group.id,
+    )
+    user.is_active = True
+
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    invalid_user_id = 9999
+
+    refresh_token = JWTManager.create_refresh_token(user_id=invalid_user_id)
+
+    refresh_token_record = RefreshTokenModel.create(
+        user_id=user.id,
+        days_valid=7,
+        token=refresh_token,
+    )
+
+    db_session.add(refresh_token_record)
+    await db_session.commit()
+
+    response = await client.post(
+        REFRESH_ACCESS_TOKEN_URL,
+        json={"refresh_token": refresh_token},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "User not found."
