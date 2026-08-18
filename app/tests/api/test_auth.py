@@ -1,7 +1,7 @@
 from datetime import datetime, timezone, timedelta
 
 import pytest
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func
 from sqlalchemy.orm import joinedload
 
 from app.core.security import verify_password
@@ -11,7 +11,12 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
-from app.models.accounts import UserModel as User, UserModel, ActivationTokenModel
+from app.models.accounts import (
+    UserModel as User,
+    UserModel,
+    ActivationTokenModel,
+    PasswordResetTokenModel,
+)
 from app.tests.conftest import db_session
 
 REGISTER_URL = "/api/accounts/register/"
@@ -364,3 +369,122 @@ async def test_activate_already_active_user(
     activation_response = await client.post(ACTIVATION_URL, json=activation_payload)
     assert activation_response.status_code == 400
     assert activation_response.json()["detail"] == "User account is already active."
+
+
+REQUEST_RESET_TOKEN_URL = "/api/accounts/password-reset/request/"
+
+
+async def test_request_password_reset_token_success(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """
+    Test successful password reset token request.
+
+    Ensures that a password reset token is created for an active user.
+
+    Steps:
+    - Register a new user.
+    - Mark the user as active.
+    - Request a password reset token.
+    - Verify that the endpoint returns status 200 and the expected success message.
+    - Query the database to confirm that a PasswordResetTokenModel record was created.
+    - Verify that the token's expiration date is in the future.
+    """
+    user_data = {
+        "email": "testuser@example.com",
+        "password": "StrongPassword123!",
+    }
+    response = await client.post(
+        REGISTER_URL,
+        json=user_data,
+    )
+    assert response.status_code == 201
+
+    user = await db_session.scalar(
+        select(UserModel).where(UserModel.email == user_data["email"])
+    )
+    assert user is not None
+
+    user.is_active = True
+    await db_session.commit()
+
+    reset_payload = {"email": user_data["email"]}
+    reset_response = await client.post(REQUEST_RESET_TOKEN_URL, json=reset_payload)
+    assert reset_response.status_code == 200
+    assert (
+        reset_response.json()["message"]
+        == "If you are registered, you will receive an email with instructions."
+    )
+
+    reset_token = await db_session.scalar(
+        select(PasswordResetTokenModel).where(
+            PasswordResetTokenModel.user_id == user.id
+        )
+    )
+    assert reset_token is not None
+
+    assert reset_token.expires_at.tzinfo is not None
+    assert reset_token.expires_at > datetime.now(timezone.utc)
+
+
+async def test_request_password_reset_token_nonexistent_user(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """
+    Test password reset token request for a non-existent user.
+
+    Ensures that the endpoint responds with a generic success message and that no password reset token is created
+    when the email does not exist in the database.
+    """
+    reset_payload = {"email": "nonexistent@example.com"}
+
+    reset_response = await client.post(REQUEST_RESET_TOKEN_URL, json=reset_payload)
+    assert reset_response.status_code == 200
+    assert (
+        reset_response.json()["message"]
+        == "If you are registered, you will receive an email with instructions."
+    )
+
+    reset_token_count = await db_session.scalar(
+        select(func.count(PasswordResetTokenModel.id))
+    )
+    assert reset_token_count == 0
+
+
+async def test_request_password_reset_token_for_inactive_user(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """
+    Test password reset token request for a registered but inactive user.
+
+    Ensures that the endpoint returns the generic success message and that no password reset token
+    is created when the user is registered but inactive.
+    """
+    user_data = {
+        "email": "testuser@example.com",
+        "password": "StrongPassword123!",
+    }
+    response = await client.post(
+        REGISTER_URL,
+        json=user_data,
+    )
+    assert response.status_code == 201
+
+    created_user = await db_session.scalar(
+        select(UserModel).where(UserModel.email == user_data["email"])
+    )
+    assert created_user is not None
+    assert not created_user.is_active
+
+    reset_payload = {"email": user_data["email"]}
+    reset_response = await client.post(REQUEST_RESET_TOKEN_URL, json=reset_payload)
+    assert reset_response.status_code == 200
+    assert (
+        reset_response.json()["message"]
+        == "If you are registered, you will receive an email with instructions."
+    )
+
+    reset_token_count = await db_session.scalar(
+        select(func.count(PasswordResetTokenModel.id))
+    )
+    assert reset_token_count == 0
