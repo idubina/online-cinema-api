@@ -64,3 +64,16 @@ async def reset_password(
 async def login(db: SessionDep, user_data: auth_schemas.UserLoginRequestSchema):
     login_data = await auth_services.login_user(db=db, user_data=user_data)
     return auth_schemas.UserLoginResponseSchema(**login_data)
+
+
+@router.post(
+    "/refresh/",
+    response_model=auth_schemas.TokenRefreshResponseSchema,
+)
+async def refresh_access_token(
+    db: SessionDep, token_data: auth_schemas.TokenRefreshRequestSchema
+):
+    access_token = await auth_services.access_token_refresh(
+        db=db, token_data=token_data
+    )
+    return auth_schemas.TokenRefreshResponseSchema(access_token=access_token)
