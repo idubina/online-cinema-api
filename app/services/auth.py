@@ -52,3 +52,15 @@ async def activate_user(
             detail="Invalid or expired activation token.",
         )
     await accounts.activate_user(db=db, user=user_db, token=token_db)
+
+
+async def request_reset_token(
+    db: AsyncSession, user_data: schemas.PasswordResetRequestSchema
+):
+
+    user_db = await accounts.get_user_by_email(db=db, email=user_data.email)
+
+    if user_db is None or not user_db.is_active:
+        return
+
+    await accounts.create_reset_token(db=db, user_db=user_db)
