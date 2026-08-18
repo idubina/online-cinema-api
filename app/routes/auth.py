@@ -55,3 +55,12 @@ async def reset_password(
     await auth_services.password_reset_complete(db=db, user_data=user_data)
     message = auth_schemas.MessageResponseSchema(message="Password reset successfully.")
     return message
+
+
+@router.post(
+    "/login/",
+    response_model=auth_schemas.UserLoginResponseSchema,
+)
+async def login(db: SessionDep, user_data: auth_schemas.UserLoginRequestSchema):
+    login_data = await auth_services.login_user(db=db, user_data=user_data)
+    return auth_schemas.UserLoginResponseSchema(**login_data)
