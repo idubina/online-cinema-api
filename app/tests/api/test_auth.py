@@ -1,7 +1,9 @@
 from datetime import datetime, timezone, timedelta
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import select, delete, func
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload
 
 from app.core.security import verify_password
@@ -488,3 +490,271 @@ async def test_request_password_reset_token_for_inactive_user(
         select(func.count(PasswordResetTokenModel.id))
     )
     assert reset_token_count == 0
+
+
+RESET_TOKEN_COMPLETE_URL = "/api/accounts/password-reset/complete/"
+
+
+async def test_reset_password_success(client: AsyncClient, db_session: AsyncSession):
+    """
+    Test the complete password reset flow.
+
+    Steps:
+    - Register a user.
+    - Activate the user.
+    - Request a password reset token.
+    - Use the token to reset the password.
+    - Verify the password is updated in the database.
+    """
+    user_data = {
+        "email": "testuser@example.com",
+        "password": "StrongPassword123!",
+    }
+    response = await client.post(
+        REGISTER_URL,
+        json=user_data,
+    )
+    assert response.status_code == 201
+
+    created_user = await db_session.scalar(
+        select(UserModel).where(UserModel.email == user_data["email"])
+    )
+    assert created_user is not None
+
+    activation_token = await db_session.scalar(
+        select(ActivationTokenModel).where(
+            ActivationTokenModel.user_id == created_user.id
+        )
+    )
+    assert activation_token is not None
+
+    activation_payload = {
+        "email": user_data["email"],
+        "token": activation_token.token,
+    }
+
+    activation_response = await client.post(ACTIVATION_URL, json=activation_payload)
+    assert activation_response.status_code == 200
+
+    await db_session.refresh(created_user)
+    assert created_user.is_active
+
+    reset_request_payload = {"email": user_data["email"]}
+
+    reset_request_response = await client.post(
+        REQUEST_RESET_TOKEN_URL, json=reset_request_payload
+    )
+    assert reset_request_response.status_code == 200
+
+    reset_token_record = await db_session.scalar(
+        select(PasswordResetTokenModel).where(
+            PasswordResetTokenModel.user_id == created_user.id
+        )
+    )
+    assert reset_token_record is not None
+
+    new_password = "NewSecurePassword123!"
+    reset_payload = {
+        "email": user_data["email"],
+        "token": reset_token_record.token,
+        "password": new_password,
+    }
+    reset_response = await client.post(RESET_TOKEN_COMPLETE_URL, json=reset_payload)
+    assert reset_response.status_code == 200
+    assert reset_response.json()["message"] == "Password reset successfully."
+
+    await db_session.refresh(created_user)
+    assert created_user.verify_password(new_password)
+
+
+async def test_reset_password_invalid_email(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """
+    Test password reset with an email that does not exist in the database.
+
+    Validates that the endpoint returns a 400 status code and appropriate error message.
+    """
+    reset_payload = {
+        "email": "nonexistent@example.com",
+        "token": "random_token",
+        "password": "NewSecurePassword123!",
+    }
+
+    response = await client.post(RESET_TOKEN_COMPLETE_URL, json=reset_payload)
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid email or token."
+
+
+async def test_reset_password_invalid_token(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """
+    Test password reset with an incorrect token.
+
+    Validates that the endpoint returns a 400 status code and an appropriate error message when an invalid token is provided.
+    Also ensures that any invalid token is removed from the database.
+    """
+    user_data = {
+        "email": "testuser@example.com",
+        "password": "StrongPassword123!",
+    }
+    response = await client.post(
+        REGISTER_URL,
+        json=user_data,
+    )
+    assert response.status_code == 201
+
+    user = await db_session.scalar(
+        select(UserModel).where(UserModel.email == user_data["email"])
+    )
+    assert user is not None
+
+    user.is_active = True
+    await db_session.commit()
+
+    reset_request_payload = {"email": user_data["email"]}
+    response = await client.post(REQUEST_RESET_TOKEN_URL, json=reset_request_payload)
+    assert response.status_code == 200
+
+    reset_complete_payload = {
+        "email": user_data["email"],
+        "token": "incorrect_token",
+        "password": "NewSecurePassword123!",
+    }
+    response = await client.post(RESET_TOKEN_COMPLETE_URL, json=reset_complete_payload)
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid email or token."
+
+    token_record = await db_session.scalar(
+        select(PasswordResetTokenModel).where(
+            PasswordResetTokenModel.user_id == user.id
+        )
+    )
+    assert token_record is None, "Invalid token was not removed."
+
+
+async def test_reset_password_expired_token(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """
+    Test password reset with an expired token.
+
+    Validates that the endpoint returns a 400 status code and an appropriate error message when the password
+    reset token is expired, and verifies that the expired token is removed from the database.
+    """
+    user_data = {
+        "email": "testuser@example.com",
+        "password": "StrongPassword123!",
+    }
+    response = await client.post(
+        REGISTER_URL,
+        json=user_data,
+    )
+    assert response.status_code == 201
+
+    user = await db_session.scalar(
+        select(UserModel).where(UserModel.email == user_data["email"])
+    )
+    assert user is not None
+
+    user.is_active = True
+    await db_session.commit()
+
+    reset_request_payload = {"email": user_data["email"]}
+    response = await client.post(REQUEST_RESET_TOKEN_URL, json=reset_request_payload)
+    assert response.status_code == 200
+
+    token_record = await db_session.scalar(
+        select(PasswordResetTokenModel).where(
+            PasswordResetTokenModel.user_id == user.id
+        )
+    )
+    assert token_record is not None
+
+    token_record.expires_at = datetime.now(timezone.utc) - timedelta(days=1)
+    await db_session.commit()
+
+    reset_complete_payload = {
+        "email": user_data["email"],
+        "token": token_record.token,
+        "password": "NewSecurePassword123!",
+    }
+    reset_response = await client.post(
+        RESET_TOKEN_COMPLETE_URL, json=reset_complete_payload
+    )
+    assert reset_response.status_code == 400
+    assert reset_response.json()["detail"] == "Invalid email or token."
+
+    expired_token = await db_session.scalar(
+        select(PasswordResetTokenModel).where(
+            PasswordResetTokenModel.user_id == user.id
+        )
+    )
+    assert expired_token is None
+
+
+async def test_reset_password_sqlalchemy_error(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """
+    Test password reset when a database commit raises SQLAlchemyError.
+
+    Validates that the endpoint returns a 500 Internal Server Error and the appropriate error message
+    when an error occurs during the password reset process.
+
+    Steps:
+    - Register a new user.
+    - Mark the user as active.
+    - Request a password reset token.
+    - Attempt to reset the password while simulating a database commit error.
+    - Verify that a 500 error is returned with the expected error message.
+    """
+    user_data = {
+        "email": "testuser@example.com",
+        "password": "StrongPassword123!",
+    }
+    response = await client.post(
+        REGISTER_URL,
+        json=user_data,
+    )
+    assert response.status_code == 201
+
+    user = await db_session.scalar(
+        select(UserModel).where(UserModel.email == user_data["email"])
+    )
+    assert user is not None
+
+    user.is_active = True
+    await db_session.commit()
+
+    reset_request_payload = {"email": user_data["email"]}
+    response = await client.post(REQUEST_RESET_TOKEN_URL, json=reset_request_payload)
+    assert response.status_code == 200
+
+    token_record = await db_session.scalar(
+        select(PasswordResetTokenModel).where(
+            PasswordResetTokenModel.user_id == user.id
+        )
+    )
+    assert token_record is not None
+
+    reset_complete_payload = {
+        "email": user_data["email"],
+        "token": token_record.token,
+        "password": "NewSecurePassword123!",
+    }
+
+    with patch(
+        "app.repositories.accounts.AsyncSession.commit", side_effect=SQLAlchemyError
+    ):
+        reset_response = await client.post(
+            RESET_TOKEN_COMPLETE_URL, json=reset_complete_payload
+        )
+
+    assert reset_response.status_code == 500
+    assert (
+        reset_response.json()["detail"]
+        == "An error occurred while resetting the password."
+    )
