@@ -12,9 +12,19 @@ async def get_user_by_email(db: AsyncSession, email):
     return await db.scalar(select(UserModel).where(UserModel.email == email))
 
 
+async def get_user_by_id(db: AsyncSession, id):
+    return await db.scalar(select(UserModel).where(UserModel.id == id))
+
+
 async def get_default_user_group(db: AsyncSession):
     return await db.scalar(
         select(UserGroupModel).where(UserGroupModel.name == UserGroupEnum.USER)
+    )
+
+
+async def get_activation_token_by_token(db: AsyncSession, token):
+    return await db.scalar(
+        select(ActivationTokenModel).where(ActivationTokenModel.token == token)
     )
 
 
@@ -39,3 +49,10 @@ async def create_user(db: AsyncSession, **user_data):
     except Exception as error:
         await db.rollback()
         raise error
+
+
+async def activate_user(db: AsyncSession, user: UserModel, token: ActivationTokenModel):
+    user.is_active = True
+    db.add(user)
+    await db.delete(token)
+    await db.commit()

@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 
@@ -23,3 +25,30 @@ async def create_user(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred during user creation.",
         )
+
+
+async def activate_user(
+    db: AsyncSession, user_data: schemas.UserActivationRequestSchema
+):
+    token_db = await accounts.get_activation_token_by_token(
+        db=db, token=user_data.token
+    )
+    if token_db is None or token_db.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired activation token.",
+        )
+
+    user_db = await accounts.get_user_by_id(db=db, id=token_db.user_id)
+
+    if user_db.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User account is already active.",
+        )
+    if user_db.email != user_data.email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired activation token.",
+        )
+    await accounts.activate_user(db=db, user=user_db, token=token_db)
