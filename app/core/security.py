@@ -1,4 +1,10 @@
+from datetime import datetime, timezone, timedelta
+from enum import StrEnum
+
+import jwt
 from pwdlib import PasswordHash
+
+from app.core.config import settings
 
 password_hash = PasswordHash.recommended()
 
@@ -34,3 +40,85 @@ def verify_password(
         plain_password,
         hashed_password,
     )
+
+
+class TokenType(StrEnum):
+    ACCESS = "access"
+    REFRESH = "refresh"
+
+
+class JWTManager:
+    @staticmethod
+    def create_access_token(user_id: int) -> str:
+        now = datetime.now(timezone.utc)
+
+        payload = {
+            "sub": str(user_id),
+            "type": TokenType.ACCESS,
+            "iat": now,
+            "exp": now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+        }
+
+        return jwt.encode(
+            payload,
+            settings.SECRET_KEY_ACCESS,
+            algorithm=settings.JWT_SIGNING_ALGORITHM,
+        )
+
+    @staticmethod
+    def create_refresh_token(user_id: int) -> str:
+        now = datetime.now(timezone.utc)
+
+        payload = {
+            "sub": str(user_id),
+            "type": TokenType.REFRESH,
+            "iat": now,
+            "exp": now + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+        }
+
+        return jwt.encode(
+            payload,
+            settings.SECRET_KEY_REFRESH,
+            algorithm=settings.JWT_SIGNING_ALGORITHM,
+        )
+
+    @staticmethod
+    def decode_access_token(token: str) -> dict:
+        return JWTManager._decode_token(
+            token=token,
+            secret_key=settings.SECRET_KEY_ACCESS,
+            expected_type=TokenType.ACCESS,
+        )
+
+    @staticmethod
+    def decode_refresh_token(token: str) -> dict:
+        return JWTManager._decode_token(
+            token=token,
+            secret_key=settings.SECRET_KEY_REFRESH,
+            expected_type=TokenType.REFRESH,
+        )
+
+    @staticmethod
+    def _decode_token(
+        token: str,
+        secret_key: str,
+        expected_type: TokenType,
+    ) -> dict:
+        payload = jwt.decode(
+            token,
+            secret_key,
+            algorithms=[settings.JWT_SIGNING_ALGORITHM],
+            options={
+                "require": [
+                    "sub",
+                    "type",
+                    "iat",
+                    "exp",
+                ]
+            },
+        )
+
+        if payload["type"] != expected_type:
+            raise jwt.InvalidTokenError(f"Expected {expected_type} token.")
+
+        return payload

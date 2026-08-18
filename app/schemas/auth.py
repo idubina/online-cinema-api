@@ -38,3 +38,29 @@ class UserActivationRequestSchema(BaseEmailSchema):
 
 class MessageResponseSchema(BaseModel):
     message: str
+
+
+class PasswordResetRequestSchema(BaseEmailSchema):
+    pass
+
+
+class PasswordResetCompleteRequestSchema(BaseEmailPasswordSchema):
+    token: str
+
+
+class UserLoginRequestSchema(BaseEmailPasswordSchema):
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserLoginResponseSchema(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str
+
+
+class TokenRefreshRequestSchema(BaseModel):
+    refresh_token: str
+
+
+class TokenRefreshResponseSchema(BaseModel):
+    access_token: str
