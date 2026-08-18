@@ -43,3 +43,15 @@ async def request_password_reset_token(
         message="If you are registered, you will receive an email with instructions."
     )
     return message
+
+
+@router.post(
+    "/password-reset/complete/",
+    response_model=auth_schemas.MessageResponseSchema,
+)
+async def reset_password(
+    db: SessionDep, user_data: auth_schemas.PasswordResetCompleteRequestSchema
+):
+    await auth_services.password_reset_complete(db=db, user_data=user_data)
+    message = auth_schemas.MessageResponseSchema(message="Password reset successfully.")
+    return message
