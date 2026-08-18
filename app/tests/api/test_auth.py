@@ -6,8 +6,7 @@ from sqlalchemy import select, delete, func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload
 
-from app.core.security import verify_password
-
+from app.core.security import verify_password, JWTManager
 
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +17,9 @@ from app.models.accounts import (
     UserModel,
     ActivationTokenModel,
     PasswordResetTokenModel,
+    UserGroupModel,
+    UserGroupEnum,
+    RefreshTokenModel,
 )
 from app.tests.conftest import db_session
 
@@ -757,4 +759,168 @@ async def test_reset_password_sqlalchemy_error(
     assert (
         reset_response.json()["detail"]
         == "An error occurred while resetting the password."
+    )
+
+
+LOGIN_URL = "/api/accounts/login/"
+
+
+async def test_login_user_success(client: AsyncClient, db_session: AsyncSession):
+    """
+    Test successful login.
+
+    Validates that access and refresh tokens are returned, the refresh token is stored in the database,
+    and both tokens are valid.
+    """
+    user_payload = {"email": "testuser@example.com", "password": "StrongPassword123!"}
+
+    user_group = await db_session.scalar(
+        select(UserGroupModel).where(UserGroupModel.name == UserGroupEnum.USER)
+    )
+    assert user_group is not None
+
+    user = UserModel.create(
+        email=user_payload["email"],
+        raw_password=user_payload["password"],
+        group_id=user_group.id,
+    )
+    user.is_active = True
+    db_session.add(user)
+    await db_session.commit()
+
+    login_payload = {
+        "email": user_payload["email"],
+        "password": user_payload["password"],
+    }
+    response = await client.post(LOGIN_URL, json=login_payload)
+    assert response.status_code == 200
+    response_data = response.json()
+    assert "access_token" in response_data
+    assert "refresh_token" in response_data
+    assert response_data["access_token"]
+    assert response_data["refresh_token"]
+
+    access_token_data = JWTManager.decode_access_token(response_data["access_token"])
+    assert access_token_data["sub"] == str(user.id)
+
+    refresh_token_data = JWTManager.decode_refresh_token(response_data["refresh_token"])
+    assert refresh_token_data["sub"] == str(user.id)
+
+    refresh_token_record = await db_session.scalar(
+        select(RefreshTokenModel).where(RefreshTokenModel.user_id == user.id)
+    )
+    assert refresh_token_record is not None
+    assert refresh_token_record.token == response_data["refresh_token"]
+
+    assert refresh_token_record.expires_at.tzinfo is not None
+    assert refresh_token_record.expires_at > datetime.now(timezone.utc)
+
+
+async def test_login_user_invalid_cases(client: AsyncClient, db_session: AsyncSession):
+    """
+    Test login with invalid cases:
+    1. Non-existent user.
+    2. Incorrect password for an existing user.
+    """
+    login_payload = {"email": "nonexistent@example.com", "password": "SomePassword123!"}
+    response = await client.post(LOGIN_URL, json=login_payload)
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid email or password."
+
+    user_payload = {"email": "testuser@example.com", "password": "CorrectPassword123!"}
+    user_group = await db_session.scalar(
+        select(UserGroupModel).where(UserGroupModel.name == UserGroupEnum.USER)
+    )
+    assert user_group is not None
+
+    user = UserModel.create(
+        email=user_payload["email"],
+        raw_password=user_payload["password"],
+        group_id=user_group.id,
+    )
+    user.is_active = True
+    db_session.add(user)
+    await db_session.commit()
+
+    login_payload_incorrect_password = {
+        "email": user_payload["email"],
+        "password": "WrongPassword123!",
+    }
+    response = await client.post(LOGIN_URL, json=login_payload_incorrect_password)
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid email or password."
+
+
+async def test_login_user_inactive_account(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """
+    Test login with an inactive user account.
+
+    Validates that the endpoint returns a 403 status code and an appropriate error message
+    when attempting to log in with a user whose account is not activated.
+    """
+    user_payload = {
+        "email": "inactiveuser@example.com",
+        "password": "StrongPassword123!",
+    }
+
+    user_group = await db_session.scalar(
+        select(UserGroupModel).where(UserGroupModel.name == UserGroupEnum.USER)
+    )
+    assert user_group is not None
+
+    user = UserModel.create(
+        email=user_payload["email"],
+        raw_password=user_payload["password"],
+        group_id=user_group.id,
+    )
+    user.is_active = False
+    db_session.add(user)
+    await db_session.commit()
+
+    login_payload = {
+        "email": user_payload["email"],
+        "password": user_payload["password"],
+    }
+    response = await client.post(LOGIN_URL, json=login_payload)
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "User account is not activated."
+
+
+async def test_login_user_commit_error(client: AsyncClient, db_session: AsyncSession):
+    """
+    Test login when a database commit error occurs.
+
+    Validates that the endpoint returns a 500 status code and an appropriate error message.
+    """
+    user_payload = {"email": "testuser@example.com", "password": "StrongPassword123!"}
+    user_group = await db_session.scalar(
+        select(UserGroupModel).where(UserGroupModel.name == UserGroupEnum.USER)
+    )
+    assert user_group is not None
+
+    user = UserModel.create(
+        email=user_payload["email"],
+        raw_password=user_payload["password"],
+        group_id=user_group.id,
+    )
+    user.is_active = True
+    db_session.add(user)
+    await db_session.commit()
+
+    login_payload = {
+        "email": user_payload["email"],
+        "password": user_payload["password"],
+    }
+
+    with patch(
+        "app.repositories.accounts.AsyncSession.commit", side_effect=SQLAlchemyError
+    ):
+        response = await client.post(LOGIN_URL, json=login_payload)
+
+    assert response.status_code == 500
+    assert (
+        response.json()["detail"] == "An error occurred while processing the request."
     )
