@@ -49,39 +49,74 @@ async def db_session(prepare_test_database):
 
 
 class FakeEmailSender(EmailSenderInterface):
+    def __init__(self):
+        self.sent_emails = []
+
     async def send_activation_email(
         self,
         email: str,
         activation_link: str,
     ) -> None:
-        pass
+        self.sent_emails.append(
+            {
+                "type": "activation",
+                "email": email,
+                "link": activation_link,
+            }
+        )
 
     async def send_activation_complete_email(
         self,
         email: str,
         login_link: str,
     ) -> None:
-        pass
+        self.sent_emails.append(
+            {
+                "type": "activation_complete",
+                "email": email,
+                "link": login_link,
+            }
+        )
 
     async def send_password_reset_email(
         self,
         email: str,
         reset_link: str,
     ) -> None:
-        pass
+        self.sent_emails.append(
+            {
+                "type": "password_reset",
+                "email": email,
+                "link": reset_link,
+            }
+        )
 
     async def send_password_reset_complete_email(
         self,
         email: str,
         login_link: str,
     ) -> None:
-        pass
+        self.sent_emails.append(
+            {
+                "type": "password_reset_complete",
+                "email": email,
+                "link": login_link,
+            }
+        )
 
 
 @pytest.fixture
-async def client(prepare_test_database):
+def fake_email_sender():
+    return FakeEmailSender()
+
+
+@pytest.fixture
+async def client(
+    prepare_test_database,
+    fake_email_sender,
+):
     app.dependency_overrides[get_db] = get_test_db
-    app.dependency_overrides[get_email_sender] = lambda: FakeEmailSender()
+    app.dependency_overrides[get_email_sender] = lambda: fake_email_sender
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
