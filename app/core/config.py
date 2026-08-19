@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     SMTP_FROM_EMAIL: str
     SMTP_START_TLS: bool = False
 
+    # celery
+    CELERY_BROKER_URL: str
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
