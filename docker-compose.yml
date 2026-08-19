@@ -32,5 +32,10 @@ services:
       - "1025:1025"
       - "8025:8025"
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
 volumes:
   online_cinema_postgres_data:
