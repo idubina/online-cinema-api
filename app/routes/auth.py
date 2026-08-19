@@ -21,9 +21,7 @@ async def register_user(
 ):
 
     user, activation_token = await auth_services.create_user(db=db, user_data=user_data)
-    activation_link = (
-        f"{settings.FRONTEND_URL}/activate" f"?token={activation_token.token}"
-    )
+    activation_link = f"{settings.FRONTEND_URL}/activate" f"?token={activation_token}"
 
     background_tasks.add_task(
         email_sender.send_activation_email,
@@ -68,7 +66,7 @@ async def request_password_reset_token(
 ):
     reset_token = await auth_services.request_reset_token(db=db, user_data=user_data)
 
-    reset_link = f"{settings.FRONTEND_URL}/reset-password?token={reset_token.token}"
+    reset_link = f"{settings.FRONTEND_URL}/reset-password?token={reset_token}"
 
     background_tasks.add_task(
         email_sender.send_password_reset_email,

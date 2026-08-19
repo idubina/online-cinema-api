@@ -21,10 +21,10 @@ async def create_user(
             detail=f"A user with this email {user_data.email} already exists.",
         )
     try:
-        user_db, activation_token = await accounts.create_user(
+        user_db, activation_token_value = await accounts.create_user(
             db=db, **user_data.model_dump()
         )
-        return user_db, activation_token
+        return user_db, activation_token_value
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -63,13 +63,14 @@ async def create_user(db: AsyncSession, **user_data):
         activation_token = ActivationTokenModel()
         user.activation_token = activation_token
 
-        db.add(activation_token)
         db.add(user)
 
+        await db.flush()
+        token = activation_token.token
         await db.commit()
         await db.refresh(user)
 
-        return user, activation_token.token
+        return user, token
 
     except Exception as error:
         await db.rollback()
