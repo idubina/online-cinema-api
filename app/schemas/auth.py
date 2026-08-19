@@ -68,3 +68,7 @@ class TokenRefreshResponseSchema(BaseModel):
 
 class UserActivationResendRequestSchema(BaseEmailSchema):
     pass
+
+
+class UserReadSchema(UserRegistrationResponseSchema):
+    pass

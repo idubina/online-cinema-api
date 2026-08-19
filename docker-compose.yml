@@ -215,6 +215,9 @@ services:
       POSTGRES_TEST_HOST: postgres_test
       POSTGRES_TEST_PORT: 5432
 
+    volumes:
+      - ./app:/code/app
+
     depends_on:
       postgres_test:
         condition: service_healthy

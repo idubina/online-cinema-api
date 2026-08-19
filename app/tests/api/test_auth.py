@@ -1341,3 +1341,71 @@ async def test_resend_activation_for_unknown_email_does_nothing(
     assert user is None
 
     assert len(fake_email_sender.sent_emails) == emails_before_resend
+
+
+ME_URL = "/api/accounts/me/"
+
+
+async def test_get_me_success(
+    client: AsyncClient,
+    db_session: AsyncSession,
+):
+    user_payload = {"email": "testuser@example.com", "password": "StrongPassword123!"}
+
+    user_group = await db_session.scalar(
+        select(UserGroupModel).where(UserGroupModel.name == UserGroupEnum.USER)
+    )
+    assert user_group is not None
+
+    user = UserModel.create(
+        email=user_payload["email"],
+        raw_password=user_payload["password"],
+        group_id=user_group.id,
+    )
+    user.is_active = True
+    db_session.add(user)
+    await db_session.commit()
+
+    login_payload = {
+        "email": user_payload["email"],
+        "password": user_payload["password"],
+    }
+
+    login_response = await client.post(
+        LOGIN_URL,
+        json={
+            "email": login_payload["email"],
+            "password": login_payload["password"],
+        },
+    )
+
+    access_token = login_response.json()["access_token"]
+
+    response = await client.get(
+        ME_URL,
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["email"] == login_payload["email"]
+
+
+async def test_get_me_without_token(client: AsyncClient):
+    response = await client.get(ME_URL)
+
+    assert response.status_code == 401
+
+
+async def test_get_me_with_invalid_token(
+    client: AsyncClient,
+):
+    response = await client.get(
+        ME_URL,
+        headers={
+            "Authorization": "Bearer invalid-token",
+        },
+    )
+
+    assert response.status_code == 401

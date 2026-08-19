@@ -2,7 +2,7 @@ from fastapi import APIRouter, status, BackgroundTasks
 
 from app.core.config import settings
 from app.schemas import auth as auth_schemas
-from app.dependencies import SessionDep, EmailSenderDep
+from app.dependencies import SessionDep, EmailSenderDep, CurrentUserDep
 from app.services import auth as auth_services
 
 router = APIRouter()
@@ -156,3 +156,13 @@ async def refresh_access_token(
         db=db, token_data=token_data
     )
     return auth_schemas.TokenRefreshResponseSchema(access_token=access_token)
+
+
+@router.get(
+    "/me/",
+    response_model=auth_schemas.UserReadSchema,
+)
+async def get_me(
+    current_user: CurrentUserDep,
+):
+    return current_user
