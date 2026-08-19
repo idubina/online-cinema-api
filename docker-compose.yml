@@ -15,6 +15,13 @@ services:
     volumes:
       - online_cinema_postgres_data:/var/lib/postgresql
 
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+
   postgres_test:
     image: postgres:18
 
@@ -26,16 +33,195 @@ services:
     ports:
       - "5433:5432"
 
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_TEST_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+
   mailpit:
     image: axllent/mailpit:latest
+
     ports:
       - "1025:1025"
       - "8025:8025"
 
+
   redis:
     image: redis:7-alpine
+
     ports:
       - "6379:6379"
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+
+  migrator:
+    build:
+      context: .
+
+    command: alembic upgrade head
+
+    env_file:
+      - .env
+
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+
+  api:
+    build:
+      context: .
+
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --reload-dir /code/app
+
+    env_file:
+      - .env
+
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+
+      CELERY_BROKER_URL: redis://redis:6379/0
+
+    ports:
+      - "8000:8000"
+
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+
+    develop:
+      watch:
+        - action: sync
+          path: ./app
+          target: /code/app
+
+        - action: rebuild
+          path: pyproject.toml
+
+        - action: rebuild
+          path: poetry.lock
+
+
+  celery_worker:
+    build:
+      context: .
+
+    command: >
+      celery
+      -A app.core.celery_app:celery_app
+      worker
+      --loglevel=INFO
+
+    env_file:
+      - .env
+
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+
+      CELERY_BROKER_URL: redis://redis:6379/0
+
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./app
+          target: /code/app
+
+        - action: rebuild
+          path: pyproject.toml
+
+        - action: rebuild
+          path: poetry.lock
+
+
+  celery_beat:
+    build:
+      context: .
+
+    command: >
+      celery
+      -A app.core.celery_app:celery_app
+      beat
+      --loglevel=INFO
+      --schedule=/tmp/celerybeat-schedule
+
+    env_file:
+      - .env
+
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+
+      CELERY_BROKER_URL: redis://redis:6379/0
+
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./app
+          target: /code/app
+
+        - action: rebuild
+          path: pyproject.toml
+
+        - action: rebuild
+          path: poetry.lock
+
+  tests:
+    build:
+      context: .
+
+    command: poetry run pytest -v
+
+    env_file:
+      - .env
+
+    environment:
+      POSTGRES_TEST_HOST: postgres_test
+      POSTGRES_TEST_PORT: 5432
+
+    depends_on:
+      postgres_test:
+        condition: service_healthy
+
+    profiles:
+      - test
+
 
 volumes:
   online_cinema_postgres_data:
