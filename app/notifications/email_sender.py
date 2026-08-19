@@ -38,8 +38,8 @@ class EmailSender(EmailSenderInterface):
             message,
             hostname=self._hostname,
             port=self._port,
-            username=self._username,
-            password=self._password,
+            username=self._username or None,
+            password=self._password or None,
             start_tls=self._start_tls,
         )
 
