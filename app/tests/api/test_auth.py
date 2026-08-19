@@ -40,10 +40,13 @@ def registration_payload(
     }
 
 
-async def test_successful_registration(client: AsyncClient, db_session: AsyncSession):
+async def test_successful_registration(
+    client: AsyncClient, db_session: AsyncSession, fake_email_sender
+):
+    payload = registration_payload()
     response = await client.post(
         REGISTER_URL,
-        json=registration_payload(),
+        json=payload,
     )
 
     assert response.status_code == 201
@@ -56,6 +59,23 @@ async def test_successful_registration(client: AsyncClient, db_session: AsyncSes
     user = await db_session.scalar(select(User).where(User.id == data["id"]))
 
     assert not user.is_active
+
+    activation_email = next(
+        email
+        for email in fake_email_sender.sent_emails
+        if email["type"] == "activation"
+    )
+
+    activation_token = await db_session.scalar(
+        select(ActivationTokenModel).where(ActivationTokenModel.user_id == user.id)
+    )
+
+    assert activation_token is not None
+
+    assert activation_email["email"] == payload["email"]
+    assert activation_email["link"] == (
+        f"{settings.FRONTEND_URL}/activate" f"?token={activation_token.token}"
+    )
 
 
 async def test_invalid_email_returns_422(
@@ -172,7 +192,9 @@ async def test_password_hash_is_absent_from_response(
 ACTIVATION_URL = "/api/accounts/activate/"
 
 
-async def test_activate_account_success(client: AsyncClient, db_session: AsyncSession):
+async def test_activate_account_success(
+    client: AsyncClient, db_session: AsyncSession, fake_email_sender
+):
     """
     Test successful activation of a user account.
 
@@ -224,6 +246,15 @@ async def test_activate_account_success(client: AsyncClient, db_session: AsyncSe
         select(ActivationTokenModel).where(ActivationTokenModel.user_id == user.id)
     )
     assert token is None
+
+    activation_complete_email = next(
+        email
+        for email in fake_email_sender.sent_emails
+        if email["type"] == "activation_complete"
+    )
+
+    assert activation_complete_email["email"] == user_data["email"]
+    assert activation_complete_email["link"] == f"{settings.FRONTEND_URL}/login"
 
 
 async def test_activate_user_with_expired_token(
@@ -381,7 +412,7 @@ REQUEST_RESET_TOKEN_URL = "/api/accounts/password-reset/request/"
 
 
 async def test_request_password_reset_token_success(
-    client: AsyncClient, db_session: AsyncSession
+    client: AsyncClient, db_session: AsyncSession, fake_email_sender
 ):
     """
     Test successful password reset token request.
@@ -428,6 +459,17 @@ async def test_request_password_reset_token_success(
         )
     )
     assert reset_token is not None
+
+    password_reset_email = next(
+        email
+        for email in fake_email_sender.sent_emails
+        if email["type"] == "password_reset"
+    )
+
+    assert password_reset_email["email"] == user_data["email"]
+    assert password_reset_email["link"] == (
+        f"{settings.FRONTEND_URL}/reset-password" f"?token={reset_token.token}"
+    )
 
     assert reset_token.expires_at.tzinfo is not None
     assert reset_token.expires_at > datetime.now(timezone.utc)
@@ -499,7 +541,9 @@ async def test_request_password_reset_token_for_inactive_user(
 RESET_TOKEN_COMPLETE_URL = "/api/accounts/password-reset/complete/"
 
 
-async def test_reset_password_success(client: AsyncClient, db_session: AsyncSession):
+async def test_reset_password_success(
+    client: AsyncClient, db_session: AsyncSession, fake_email_sender
+):
     """
     Test the complete password reset flow.
 
@@ -569,6 +613,15 @@ async def test_reset_password_success(client: AsyncClient, db_session: AsyncSess
 
     await db_session.refresh(created_user)
     assert created_user.verify_password(new_password)
+
+    password_reset_complete_email = next(
+        email
+        for email in fake_email_sender.sent_emails
+        if email["type"] == "password_reset_complete"
+    )
+
+    assert password_reset_complete_email["email"] == user_data["email"]
+    assert password_reset_complete_email["link"] == (f"{settings.FRONTEND_URL}/login")
 
 
 async def test_reset_password_invalid_email(

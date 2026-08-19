@@ -4,6 +4,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     PROJECT_NAME: str = "FastAPI backend for online cinema"
 
+    FRONTEND_URL: str
+
+    # Postgres database
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str
 
@@ -11,16 +14,26 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
 
+    # Postgres test database
     POSTGRES_TEST_DB: str
     POSTGRES_TEST_HOST: str
     POSTGRES_TEST_PORT: int
 
+    # JWT
     SECRET_KEY_ACCESS: str
     SECRET_KEY_REFRESH: str
     JWT_SIGNING_ALGORITHM: str = "HS256"
 
     ACCESS_TOKEN_EXPIRE_MINUTES: int
     REFRESH_TOKEN_EXPIRE_DAYS: int
+
+    # email
+    SMTP_HOST: str
+    SMTP_PORT: int
+    SMTP_USERNAME: str | None = None
+    SMTP_PASSWORD: str | None = None
+    SMTP_FROM_EMAIL: str
+    SMTP_START_TLS: bool = False
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -26,5 +26,11 @@ services:
     ports:
       - "5433:5432"
 
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
 volumes:
   online_cinema_postgres_data:

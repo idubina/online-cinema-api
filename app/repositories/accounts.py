@@ -63,13 +63,14 @@ async def create_user(db: AsyncSession, **user_data):
         activation_token = ActivationTokenModel()
         user.activation_token = activation_token
 
-        db.add(activation_token)
         db.add(user)
 
+        await db.flush()
+        token = activation_token.token
         await db.commit()
         await db.refresh(user)
 
-        return user
+        return user, token
 
     except Exception as error:
         await db.rollback()
@@ -93,6 +94,7 @@ async def create_reset_token(db: AsyncSession, user_db: UserModel):
     new_reset_token = PasswordResetTokenModel(user_id=user_db.id)
     db.add(new_reset_token)
     await db.commit()
+    return new_reset_token.token
 
 
 async def reset_password(
