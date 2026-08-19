@@ -55,6 +55,42 @@ async def activate_user(
 
 
 @router.post(
+    "/activate/resend/",
+    response_model=auth_schemas.MessageResponseSchema,
+)
+async def resend_activation(
+    db: SessionDep,
+    user_data: auth_schemas.UserActivationResendRequestSchema,
+    background_tasks: BackgroundTasks,
+    email_sender: EmailSenderDep,
+):
+    result = await auth_services.resend_activation_token(
+        db=db,
+        user_data=user_data,
+    )
+
+    if result is not None:
+        user, activation_token = result
+
+        activation_link = (
+            f"{settings.FRONTEND_URL}/activate" f"?token={activation_token}"
+        )
+
+        background_tasks.add_task(
+            email_sender.send_activation_email,
+            user.email,
+            activation_link,
+        )
+
+    return auth_schemas.MessageResponseSchema(
+        message=(
+            "If the account exists and is not activated, "
+            "an activation email will be sent."
+        )
+    )
+
+
+@router.post(
     "/password-reset/request/",
     response_model=auth_schemas.MessageResponseSchema,
 )
