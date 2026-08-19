@@ -1126,3 +1126,218 @@ async def test_refresh_access_token_user_not_found(
 
     assert response.status_code == 404
     assert response.json()["detail"] == "User not found."
+
+
+RESEND_ACTIVATION_URL = "/api/accounts/activate/resend/"
+
+
+async def test_resend_activation_without_existing_token_success(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    fake_email_sender,
+):
+    user_data = {
+        "email": "resend-no-token@example.com",
+        "password": "StrongPassword123!",
+    }
+
+    response = await client.post(
+        REGISTER_URL,
+        json=user_data,
+    )
+    assert response.status_code == 201
+
+    user = await db_session.scalar(
+        select(UserModel).where(UserModel.email == user_data["email"])
+    )
+    assert user is not None
+    assert not user.is_active
+
+    activation_token = await db_session.scalar(
+        select(ActivationTokenModel).where(ActivationTokenModel.user_id == user.id)
+    )
+    assert activation_token is not None
+
+    await db_session.delete(activation_token)
+    await db_session.commit()
+
+    activation_token = await db_session.scalar(
+        select(ActivationTokenModel).where(ActivationTokenModel.user_id == user.id)
+    )
+    assert activation_token is None
+
+    emails_before_resend = len(fake_email_sender.sent_emails)
+
+    response = await client.post(
+        RESEND_ACTIVATION_URL,
+        json={"email": user_data["email"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["message"] == (
+        "If the account exists and is not activated, "
+        "an activation email will be sent."
+    )
+
+    new_token = await db_session.scalar(
+        select(ActivationTokenModel).where(ActivationTokenModel.user_id == user.id)
+    )
+    assert new_token is not None
+
+    assert len(fake_email_sender.sent_emails) == emails_before_resend + 1
+
+    resend_email = fake_email_sender.sent_emails[-1]
+
+    assert resend_email["type"] == "activation"
+    assert resend_email["email"] == user_data["email"]
+    assert resend_email["link"] == (
+        f"{settings.FRONTEND_URL}/activate" f"?token={new_token.token}"
+    )
+
+
+async def test_resend_activation_replaces_existing_token(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    fake_email_sender,
+):
+    user_data = {
+        "email": "resend-existing-token@example.com",
+        "password": "StrongPassword123!",
+    }
+
+    response = await client.post(
+        REGISTER_URL,
+        json=user_data,
+    )
+    assert response.status_code == 201
+
+    user = await db_session.scalar(
+        select(UserModel).where(UserModel.email == user_data["email"])
+    )
+    assert user is not None
+    assert not user.is_active
+
+    old_token = await db_session.scalar(
+        select(ActivationTokenModel).where(ActivationTokenModel.user_id == user.id)
+    )
+    assert old_token is not None
+
+    old_token_id = old_token.id
+    old_token_value = old_token.token
+
+    emails_before_resend = len(fake_email_sender.sent_emails)
+
+    response = await client.post(
+        RESEND_ACTIVATION_URL,
+        json={"email": user_data["email"]},
+    )
+
+    assert response.status_code == 200
+
+    tokens = (
+        await db_session.scalars(
+            select(ActivationTokenModel).where(ActivationTokenModel.user_id == user.id)
+        )
+    ).all()
+
+    assert len(tokens) == 1
+
+    new_token = tokens[0]
+
+    assert new_token.id != old_token_id
+    assert new_token.token != old_token_value
+
+    assert len(fake_email_sender.sent_emails) == emails_before_resend + 1
+
+    resend_email = fake_email_sender.sent_emails[-1]
+
+    assert resend_email["type"] == "activation"
+    assert resend_email["email"] == user_data["email"]
+    assert resend_email["link"] == (
+        f"{settings.FRONTEND_URL}/activate" f"?token={new_token.token}"
+    )
+
+
+async def test_resend_activation_for_active_user_does_nothing(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    fake_email_sender,
+):
+    user_data = {
+        "email": "active-resend@example.com",
+        "password": "StrongPassword123!",
+    }
+
+    response = await client.post(
+        REGISTER_URL,
+        json=user_data,
+    )
+    assert response.status_code == 201
+
+    user = await db_session.scalar(
+        select(UserModel).where(UserModel.email == user_data["email"])
+    )
+    assert user is not None
+
+    activation_token = await db_session.scalar(
+        select(ActivationTokenModel).where(ActivationTokenModel.user_id == user.id)
+    )
+    assert activation_token is not None
+
+    activation_response = await client.post(
+        ACTIVATION_URL,
+        json={
+            "email": user_data["email"],
+            "token": activation_token.token,
+        },
+    )
+    assert activation_response.status_code == 200
+
+    await db_session.refresh(user)
+    assert user.is_active
+
+    emails_before_resend = len(fake_email_sender.sent_emails)
+
+    response = await client.post(
+        RESEND_ACTIVATION_URL,
+        json={"email": user_data["email"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["message"] == (
+        "If the account exists and is not activated, "
+        "an activation email will be sent."
+    )
+
+    token = await db_session.scalar(
+        select(ActivationTokenModel).where(ActivationTokenModel.user_id == user.id)
+    )
+
+    assert token is None
+    assert len(fake_email_sender.sent_emails) == emails_before_resend
+
+
+async def test_resend_activation_for_unknown_email_does_nothing(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    fake_email_sender,
+):
+    emails_before_resend = len(fake_email_sender.sent_emails)
+
+    response = await client.post(
+        RESEND_ACTIVATION_URL,
+        json={"email": "unknown@example.com"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["message"] == (
+        "If the account exists and is not activated, "
+        "an activation email will be sent."
+    )
+
+    user = await db_session.scalar(
+        select(UserModel).where(UserModel.email == "unknown@example.com")
+    )
+    assert user is None
+
+    assert len(fake_email_sender.sent_emails) == emails_before_resend
