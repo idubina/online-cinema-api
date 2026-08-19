@@ -1,9 +1,11 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.dependencies import get_email_sender
 from app.main import app
 from app.database import Base, get_db
 from app.models.accounts import UserGroupEnum, UserGroupModel
+from app.notifications.interfaces import EmailSenderInterface
 
 from app.tests.database import (
     TestSessionLocal,
@@ -46,9 +48,40 @@ async def db_session(prepare_test_database):
         await session.rollback()
 
 
+class FakeEmailSender(EmailSenderInterface):
+    async def send_activation_email(
+        self,
+        email: str,
+        activation_link: str,
+    ) -> None:
+        pass
+
+    async def send_activation_complete_email(
+        self,
+        email: str,
+        login_link: str,
+    ) -> None:
+        pass
+
+    async def send_password_reset_email(
+        self,
+        email: str,
+        reset_link: str,
+    ) -> None:
+        pass
+
+    async def send_password_reset_complete_email(
+        self,
+        email: str,
+        login_link: str,
+    ) -> None:
+        pass
+
+
 @pytest.fixture
 async def client(prepare_test_database):
     app.dependency_overrides[get_db] = get_test_db
+    app.dependency_overrides[get_email_sender] = lambda: FakeEmailSender()
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
