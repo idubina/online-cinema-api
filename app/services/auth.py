@@ -182,3 +182,31 @@ async def access_token_refresh(
         )
 
     return JWTManager.create_access_token(user_id=user_db.id)
+
+
+async def resend_activation_token(
+    db: AsyncSession,
+    user_data: schemas.UserActivationResendRequestSchema,
+):
+    email = user_data.email
+    user_db = await accounts.get_user_by_email(
+        db=db,
+        email=email,
+    )
+
+    if user_db is None or user_db.is_active:
+        return None
+
+    try:
+        token = await accounts.replace_activation_token(
+            db=db,
+            user_id=user_db.id,
+        )
+
+        return user_db, token
+
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while creating activation token.",
+        )

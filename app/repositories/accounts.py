@@ -122,3 +122,30 @@ async def save_refresh_token(db: AsyncSession, user_id: int, refresh_token: str)
     except Exception as error:
         await db.rollback()
         raise error
+
+
+async def replace_activation_token(
+    db: AsyncSession,
+    user_id: int,
+) -> str:
+    try:
+        await db.execute(
+            delete(ActivationTokenModel).where(ActivationTokenModel.user_id == user_id)
+        )
+
+        activation_token = ActivationTokenModel(
+            user_id=user_id,
+        )
+        db.add(activation_token)
+
+        await db.flush()
+
+        token = activation_token.token
+
+        await db.commit()
+
+        return token
+
+    except Exception:
+        await db.rollback()
+        raise
