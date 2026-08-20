@@ -17,6 +17,7 @@ from fastapi.security import OAuth2PasswordBearer
 from app.core.security import JWTManager
 from app.models.accounts import UserModel, UserGroupEnum
 from app.repositories import accounts
+from app.storages import S3StorageInterface, S3StorageClient
 
 SessionDep = Annotated[AsyncSession, Depends(get_db)]
 
@@ -117,4 +118,20 @@ ModeratorDep = Annotated[
             UserGroupEnum.ADMIN,
         )
     ),
+]
+
+
+def get_s3_storage() -> S3StorageInterface:
+    return S3StorageClient(
+        endpoint_url=settings.S3_ENDPOINT_URL,
+        access_key=settings.S3_ACCESS_KEY,
+        secret_key=settings.S3_SECRET_KEY,
+        bucket_name=settings.S3_BUCKET_NAME,
+        public_url=settings.S3_PUBLIC_URL,
+    )
+
+
+S3StorageDep = Annotated[
+    S3StorageInterface,
+    Depends(get_s3_storage),
 ]
