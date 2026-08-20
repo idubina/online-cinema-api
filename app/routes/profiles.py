@@ -43,3 +43,33 @@ async def create_profile(
         avatar=avatar_url,
     )
     return profile_res
+
+
+@router.get(
+    "/{user_id}/profile/",
+    response_model=schemas.ProfileResponseSchema,
+)
+async def get_profile(
+    db: SessionDep,
+    user_id: int,
+    current_user: CurrentUserDep,
+    storage: S3StorageDep,
+):
+    profile, avatar_url = await profile_services.get_profile(
+        db=db,
+        user_id=user_id,
+        current_user_id=current_user.id,
+        current_user_group=current_user.group.name,
+        storage=storage,
+    )
+
+    return schemas.ProfileResponseSchema(
+        id=profile.id,
+        user_id=profile.user_id,
+        first_name=profile.first_name,
+        last_name=profile.last_name,
+        gender=profile.gender,
+        date_of_birth=profile.date_of_birth,
+        info=profile.info,
+        avatar=avatar_url,
+    )

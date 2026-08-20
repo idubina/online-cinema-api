@@ -88,3 +88,41 @@ async def create_profile(
     avatar_url = await storage.get_file_url(profile.avatar)
 
     return profile, avatar_url
+
+
+async def get_profile(
+    db: AsyncSession,
+    user_id: int,
+    current_user_id: int,
+    current_user_group: UserGroupEnum,
+    storage: S3StorageInterface,
+):
+    if not await accounts.user_active_and_exists(
+        db=db,
+        user_id=user_id,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found or not active.",
+        )
+
+    if current_user_id != user_id and current_user_group != UserGroupEnum.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to view this profile.",
+        )
+
+    profile = await profiles.get_profile_by_user_id(
+        db=db,
+        user_id=user_id,
+    )
+
+    if profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User profile not found.",
+        )
+
+    avatar_url = await storage.get_file_url(profile.avatar)
+
+    return profile, avatar_url
