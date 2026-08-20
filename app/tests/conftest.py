@@ -1,10 +1,12 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_email_sender, get_s3_storage
 from app.main import app
 from app.database import Base, get_db
-from app.models.accounts import UserGroupEnum, UserGroupModel
+from app.models.accounts import UserGroupEnum, UserGroupModel, UserModel
 from app.notifications.interfaces import EmailSenderInterface
 
 from app.tests.database import (
@@ -14,6 +16,10 @@ from app.tests.database import (
 )
 
 from app.storages import S3StorageInterface
+
+REGISTER_URL = "/api/accounts/register/"
+
+LOGIN_URL = "/api/accounts/login/"
 
 
 @pytest.fixture
@@ -144,10 +150,7 @@ def fake_s3_storage():
 
 
 @pytest.fixture
-async def client(
-    prepare_test_database,
-    fake_email_sender,
-):
+async def client(prepare_test_database, fake_email_sender, fake_s3_storage):
     app.dependency_overrides[get_db] = get_test_db
     app.dependency_overrides[get_email_sender] = lambda: fake_email_sender
     app.dependency_overrides[get_s3_storage] = lambda: fake_s3_storage
@@ -159,3 +162,55 @@ async def client(
         yield async_client
 
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+async def authenticated_user(
+    client: AsyncClient,
+    db_session: AsyncSession,
+):
+    user_data = {
+        "email": "profile@test.com",
+        "password": "StrongPassword123!",
+    }
+
+    response = await client.post(
+        REGISTER_URL,
+        json=user_data,
+    )
+
+    assert response.status_code == 201
+
+    user = await db_session.scalar(
+        select(UserModel).where(UserModel.email == user_data["email"])
+    )
+    assert user is not None
+
+    user.is_active = True
+    await db_session.commit()
+
+    login_payload = {
+        "email": user_data["email"],
+        "password": user_data["password"],
+    }
+    login_response = await client.post(LOGIN_URL, json=login_payload)
+    assert login_response.status_code == 200
+    login_response_data = login_response.json()
+    assert "access_token" in login_response_data
+    assert "refresh_token" in login_response_data
+    assert login_response_data["access_token"]
+    assert login_response_data["refresh_token"]
+    access_token = login_response_data["access_token"]
+
+    read_response = await client.get(
+        "/api/accounts/me/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+    )
+
+    assert read_response.status_code == 200
+
+    current_user = read_response.json()
+
+    return current_user, access_token
