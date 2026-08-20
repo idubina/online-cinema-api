@@ -1,5 +1,6 @@
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.database import Base
@@ -18,8 +19,12 @@ async def get_user_by_email(db: AsyncSession, email):
     return await db.scalar(select(UserModel).where(UserModel.email == email))
 
 
-async def get_user_by_id(db: AsyncSession, id):
-    return await db.scalar(select(UserModel).where(UserModel.id == id))
+async def get_user_by_id(db: AsyncSession, id: int):
+    return await db.scalar(
+        select(UserModel)
+        .options(selectinload(UserModel.group))
+        .where(UserModel.id == id)
+    )
 
 
 async def get_default_user_group(db: AsyncSession):
@@ -149,3 +154,10 @@ async def replace_activation_token(
     except Exception:
         await db.rollback()
         raise
+
+
+async def user_active_and_exists(db: AsyncSession, user_id: int) -> bool:
+    user = await get_user_by_id(db=db, id=user_id)
+    if user is None or not user.is_active:
+        return False
+    return True
