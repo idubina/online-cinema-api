@@ -38,6 +38,13 @@ class Settings(BaseSettings):
     # celery
     CELERY_BROKER_URL: str
 
+    # s3
+    S3_ENDPOINT_URL: str
+    S3_PUBLIC_URL: str
+    S3_ACCESS_KEY: str
+    S3_SECRET_KEY: str
+    S3_BUCKET_NAME: str
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

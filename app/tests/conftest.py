@@ -1,10 +1,12 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_email_sender
+from app.dependencies import get_email_sender, get_s3_storage
 from app.main import app
 from app.database import Base, get_db
-from app.models.accounts import UserGroupEnum, UserGroupModel
+from app.models.accounts import UserGroupEnum, UserGroupModel, UserModel
 from app.notifications.interfaces import EmailSenderInterface
 
 from app.tests.database import (
@@ -12,6 +14,12 @@ from app.tests.database import (
     get_test_db,
     test_engine,
 )
+
+from app.storages import S3StorageInterface
+
+REGISTER_URL = "/api/accounts/register/"
+
+LOGIN_URL = "/api/accounts/login/"
 
 
 @pytest.fixture
@@ -110,13 +118,42 @@ def fake_email_sender():
     return FakeEmailSender()
 
 
+class FakeS3Storage(S3StorageInterface):
+
+    def __init__(self):
+        self.files: dict[str, bytes] = {}
+
+    async def upload_file(
+        self,
+        file_name: str,
+        file_data: bytes,
+        content_type: str,
+    ) -> None:
+        self.files[file_name] = file_data
+
+    async def get_file_url(
+        self,
+        file_name: str,
+    ) -> str:
+        return f"http://test-storage/{file_name}"
+
+    async def delete_file(
+        self,
+        file_name: str,
+    ) -> None:
+        self.files.pop(file_name, None)
+
+
 @pytest.fixture
-async def client(
-    prepare_test_database,
-    fake_email_sender,
-):
+def fake_s3_storage():
+    return FakeS3Storage()
+
+
+@pytest.fixture
+async def client(prepare_test_database, fake_email_sender, fake_s3_storage):
     app.dependency_overrides[get_db] = get_test_db
     app.dependency_overrides[get_email_sender] = lambda: fake_email_sender
+    app.dependency_overrides[get_s3_storage] = lambda: fake_s3_storage
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
@@ -125,3 +162,55 @@ async def client(
         yield async_client
 
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+async def authenticated_user(
+    client: AsyncClient,
+    db_session: AsyncSession,
+):
+    user_data = {
+        "email": "profile@test.com",
+        "password": "StrongPassword123!",
+    }
+
+    response = await client.post(
+        REGISTER_URL,
+        json=user_data,
+    )
+
+    assert response.status_code == 201
+
+    user = await db_session.scalar(
+        select(UserModel).where(UserModel.email == user_data["email"])
+    )
+    assert user is not None
+
+    user.is_active = True
+    await db_session.commit()
+
+    login_payload = {
+        "email": user_data["email"],
+        "password": user_data["password"],
+    }
+    login_response = await client.post(LOGIN_URL, json=login_payload)
+    assert login_response.status_code == 200
+    login_response_data = login_response.json()
+    assert "access_token" in login_response_data
+    assert "refresh_token" in login_response_data
+    assert login_response_data["access_token"]
+    assert login_response_data["refresh_token"]
+    access_token = login_response_data["access_token"]
+
+    read_response = await client.get(
+        "/api/accounts/me/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+    )
+
+    assert read_response.status_code == 200
+
+    current_user = read_response.json()
+
+    return current_user, access_token

@@ -23,7 +23,6 @@ from app.models.accounts import (
     UserGroupEnum,
     RefreshTokenModel,
 )
-from app.tests.conftest import db_session
 
 REGISTER_URL = "/api/accounts/register/"
 
