@@ -1,7 +1,7 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.dependencies import get_email_sender
+from app.dependencies import get_email_sender, get_s3_storage
 from app.main import app
 from app.database import Base, get_db
 from app.models.accounts import UserGroupEnum, UserGroupModel
@@ -12,6 +12,8 @@ from app.tests.database import (
     get_test_db,
     test_engine,
 )
+
+from app.storages import S3StorageInterface
 
 
 @pytest.fixture
@@ -110,6 +112,37 @@ def fake_email_sender():
     return FakeEmailSender()
 
 
+class FakeS3Storage(S3StorageInterface):
+
+    def __init__(self):
+        self.files: dict[str, bytes] = {}
+
+    async def upload_file(
+        self,
+        file_name: str,
+        file_data: bytes,
+        content_type: str,
+    ) -> None:
+        self.files[file_name] = file_data
+
+    async def get_file_url(
+        self,
+        file_name: str,
+    ) -> str:
+        return f"http://test-storage/{file_name}"
+
+    async def delete_file(
+        self,
+        file_name: str,
+    ) -> None:
+        self.files.pop(file_name, None)
+
+
+@pytest.fixture
+def fake_s3_storage():
+    return FakeS3Storage()
+
+
 @pytest.fixture
 async def client(
     prepare_test_database,
@@ -117,6 +150,7 @@ async def client(
 ):
     app.dependency_overrides[get_db] = get_test_db
     app.dependency_overrides[get_email_sender] = lambda: fake_email_sender
+    app.dependency_overrides[get_s3_storage] = lambda: fake_s3_storage
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
