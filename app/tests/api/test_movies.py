@@ -1,5 +1,6 @@
 import math
 from datetime import date, timedelta
+from decimal import Decimal
 
 import pytest
 
@@ -209,60 +210,84 @@ async def test_create_movie_with_same_date_and_name_error(
         json=movie_payload_full,
     )
 
-    async def test_read_movie_success(
-        client: AsyncClient, db_session: AsyncSession, authenticated_user
-    ):
-        user, access_token = authenticated_user
-        current_user = await db_session.scalar(
-            select(UserModel).where(UserModel.id == user["id"])
-        )
+    assert response_1.status_code == 201
 
-        current_user.group = await db_session.scalar(
-            select(UserGroupModel).where(UserGroupModel.name == UserGroupEnum.MODERATOR)
-        )
-        db_session.add(current_user)
-        await db_session.commit()
+    response_2 = await client.post(
+        f"{CINEMA_URL}/movies/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+        json=movie_payload_full,
+    )
 
-        movie_payload_1 = {
-            "name": "Test",
-            "date": "2020-08-20",
-            "score": 89,
-            "overview": "Tested",
-            "status": "Released",
-            "budget": "12345654",
-            "revenue": "76543245",
-        }
+    assert response_2.status_code == 409
 
-        movie_payload_2 = {
-            "country": "USA",
-            "genres": ["Test Genre"],
-            "actors": ["Test Actor 1", "Test Actor 2"],
-            "languages": ["Test Language"],
-        }
+    detail = response_2.json()["detail"]
+    movie_name = movie_payload_full["name"]
+    movie_date = movie_payload_full["date"]
+    assert (
+        detail
+        == f"A movie with the name '{movie_name}' and release date '{movie_date}' already exists."
+    )
 
-        movie_payload_full = movie_payload_1 | movie_payload_2
 
-        create_response = await client.post(
-            f"{CINEMA_URL}/movies/",
-            headers={
-                "Authorization": f"Bearer {access_token}",
-            },
-            json=movie_payload_full,
-        )
+async def test_read_movie_success(
+    client: AsyncClient, db_session: AsyncSession, authenticated_user
+):
+    user, access_token = authenticated_user
+    current_user = await db_session.scalar(
+        select(UserModel).where(UserModel.id == user["id"])
+    )
 
-        assert create_response.status_code == 201
+    current_user.group = await db_session.scalar(
+        select(UserGroupModel).where(UserGroupModel.name == UserGroupEnum.MODERATOR)
+    )
+    db_session.add(current_user)
+    await db_session.commit()
 
-        create_response_data = create_response.json()
+    movie_payload_1 = {
+        "name": "Test",
+        "date": "2020-08-20",
+        "score": 89,
+        "overview": "Tested",
+        "status": "Released",
+        "budget": "12345654",
+        "revenue": "76543245",
+    }
 
-        read_response = await client.get(
-            f"{CINEMA_URL}/movies/{create_response_data['id']}/"
-        )
+    movie_payload_2 = {
+        "country": "USA",
+        "genres": ["Test Genre"],
+        "actors": ["Test Actor 1", "Test Actor 2"],
+        "languages": ["Test Language"],
+    }
 
-        assert read_response.status_code == 200
+    movie_payload_full = movie_payload_1 | movie_payload_2
 
-        read_response_data = read_response.json()
+    create_response = await client.post(
+        f"{CINEMA_URL}/movies/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+        json=movie_payload_full,
+    )
 
-        assert read_response_data == create_response_data
+    assert create_response.status_code == 201
+
+    create_response_data = create_response.json()
+
+    read_response = await client.get(
+        f"{CINEMA_URL}/movies/{create_response_data['id']}/"
+    )
+
+    assert read_response.status_code == 200
+
+    read_response_data = read_response.json()
+    create_response_data["budget"] = Decimal(create_response_data["budget"])
+    create_response_data["revenue"] = Decimal(create_response_data["revenue"])
+    read_response_data["budget"] = Decimal(read_response_data["budget"])
+    read_response_data["revenue"] = Decimal(read_response_data["revenue"])
+    assert read_response_data == create_response_data
 
 
 async def test_read_movie_not_found_error(
@@ -434,3 +459,340 @@ async def test_get_movie_list_invalid_pagination(
     response = await client.get(f"{CINEMA_URL}/movies/?{query}")
 
     assert response.status_code == 422
+
+
+async def test_update_movie_success(
+    client: AsyncClient, db_session: AsyncSession, authenticated_user
+):
+    user, access_token = authenticated_user
+    current_user = await db_session.scalar(
+        select(UserModel).where(UserModel.id == user["id"])
+    )
+
+    current_user.group = await db_session.scalar(
+        select(UserGroupModel).where(UserGroupModel.name == UserGroupEnum.MODERATOR)
+    )
+    db_session.add(current_user)
+    await db_session.commit()
+
+    movie_payload = {
+        "name": "Test",
+        "date": "2020-08-20",
+        "score": 89,
+        "overview": "Tested",
+        "status": "Released",
+        "budget": "12345654",
+        "revenue": "76543245",
+        "country": "USA",
+        "genres": ["Test Genre"],
+        "actors": ["Test Actor 1", "Test Actor 2"],
+        "languages": ["Test Language"],
+    }
+
+    response = await client.post(
+        f"{CINEMA_URL}/movies/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+        json=movie_payload,
+    )
+
+    assert response.status_code == 201
+
+    movie_id = response.json()["id"]
+
+    update_payload = {
+        "name": "Updated Test",
+        "score": 95,
+        "overview": "Updated overview",
+        "budget": "20000000",
+    }
+
+    response = await client.patch(
+        f"{CINEMA_URL}/movies/{movie_id}/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+        json=update_payload,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["message"] == "Movie updated successfully."
+
+    movie = await db_session.scalar(select(MovieModel).where(MovieModel.id == movie_id))
+
+    assert movie is not None
+    assert movie.name == "Updated Test"
+    assert movie.score == 95
+    assert movie.overview == "Updated overview"
+    assert float(movie.budget) == 20000000
+
+    assert str(movie.date) == "2020-08-20"
+    assert float(movie.revenue) == 76543245
+
+
+async def test_default_user_update_movie_forbidden(
+    client: AsyncClient, authenticated_user
+):
+    access_token = authenticated_user[1]
+
+    response = await client.patch(
+        f"{CINEMA_URL}/movies/1/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+        json={
+            "name": "Updated Test",
+        },
+    )
+
+    assert response.status_code == 403
+
+    detail = response.json()["detail"]
+    assert detail == "You do not have permission to perform this action."
+
+
+async def test_unauthenticated_user_update_movie_not_allowed(
+    client: AsyncClient,
+):
+    response = await client.patch(
+        f"{CINEMA_URL}/movies/1/",
+        json={
+            "name": "Updated Test",
+        },
+    )
+
+    assert response.status_code == 401
+
+    detail = response.json()["detail"]
+    assert detail == "Not authenticated"
+
+
+async def test_update_movie_not_found(
+    client: AsyncClient, db_session: AsyncSession, authenticated_user
+):
+    user, access_token = authenticated_user
+    current_user = await db_session.scalar(
+        select(UserModel).where(UserModel.id == user["id"])
+    )
+
+    current_user.group = await db_session.scalar(
+        select(UserGroupModel).where(UserGroupModel.name == UserGroupEnum.MODERATOR)
+    )
+    db_session.add(current_user)
+    await db_session.commit()
+
+    response = await client.patch(
+        f"{CINEMA_URL}/movies/99999/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+        json={
+            "name": "Updated Test",
+        },
+    )
+
+    assert response.status_code == 404
+
+    detail = response.json()["detail"]
+    assert detail == "Movie with the given ID was not found."
+
+
+async def test_update_movie_without_fields_error(
+    client: AsyncClient, db_session: AsyncSession, authenticated_user
+):
+    user, access_token = authenticated_user
+    current_user = await db_session.scalar(
+        select(UserModel).where(UserModel.id == user["id"])
+    )
+
+    current_user.group = await db_session.scalar(
+        select(UserGroupModel).where(UserGroupModel.name == UserGroupEnum.MODERATOR)
+    )
+    db_session.add(current_user)
+    await db_session.commit()
+
+    movie_payload = {
+        "name": "Test",
+        "date": "2020-08-20",
+        "score": 89,
+        "overview": "Tested",
+        "status": "Released",
+        "budget": "12345654",
+        "revenue": "76543245",
+        "country": "USA",
+        "genres": ["Test Genre"],
+        "actors": ["Test Actor 1", "Test Actor 2"],
+        "languages": ["Test Language"],
+    }
+
+    response = await client.post(
+        f"{CINEMA_URL}/movies/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+        json=movie_payload,
+    )
+
+    assert response.status_code == 201
+
+    movie_id = response.json()["id"]
+
+    response = await client.patch(
+        f"{CINEMA_URL}/movies/{movie_id}/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+        json={},
+    )
+
+    assert response.status_code == 400
+
+    detail = response.json()["detail"]
+    assert detail == "No fields were provided for update."
+
+
+async def test_update_movie_with_date_more_than_one_year_in_future_error(
+    client: AsyncClient, db_session: AsyncSession, authenticated_user
+):
+    user, access_token = authenticated_user
+    current_user = await db_session.scalar(
+        select(UserModel).where(UserModel.id == user["id"])
+    )
+
+    current_user.group = await db_session.scalar(
+        select(UserGroupModel).where(UserGroupModel.name == UserGroupEnum.MODERATOR)
+    )
+    db_session.add(current_user)
+    await db_session.commit()
+
+    movie_payload = {
+        "name": "Test",
+        "date": "2020-08-20",
+        "score": 89,
+        "overview": "Tested",
+        "status": "Released",
+        "budget": "12345654",
+        "revenue": "76543245",
+        "country": "USA",
+        "genres": ["Test Genre"],
+        "actors": ["Test Actor 1", "Test Actor 2"],
+        "languages": ["Test Language"],
+    }
+
+    response = await client.post(
+        f"{CINEMA_URL}/movies/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+        json=movie_payload,
+    )
+
+    assert response.status_code == 201
+
+    movie_id = response.json()["id"]
+
+    incorrect_date = str(date.today() + timedelta(days=366))
+
+    response = await client.patch(
+        f"{CINEMA_URL}/movies/{movie_id}/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+        json={
+            "date": incorrect_date,
+        },
+    )
+
+    assert response.status_code == 422
+
+    detail = response.json()["detail"]
+
+    assert (
+        "Release date cannot be more than one year in the future." in detail[0]["msg"]
+    )
+
+
+async def test_update_movie_with_same_name_and_date_error(
+    client: AsyncClient, db_session: AsyncSession, authenticated_user
+):
+    user, access_token = authenticated_user
+    current_user = await db_session.scalar(
+        select(UserModel).where(UserModel.id == user["id"])
+    )
+
+    current_user.group = await db_session.scalar(
+        select(UserGroupModel).where(UserGroupModel.name == UserGroupEnum.MODERATOR)
+    )
+    db_session.add(current_user)
+    await db_session.commit()
+
+    first_movie_payload = {
+        "name": "Test One",
+        "date": "2020-08-20",
+        "score": 89,
+        "overview": "Tested",
+        "status": "Released",
+        "budget": "12345654",
+        "revenue": "76543245",
+        "country": "USA",
+        "genres": ["Test Genre"],
+        "actors": ["Test Actor 1"],
+        "languages": ["Test Language"],
+    }
+
+    second_movie_payload = {
+        "name": "Test Two",
+        "date": "2021-08-20",
+        "score": 80,
+        "overview": "Tested",
+        "status": "Released",
+        "budget": "10000000",
+        "revenue": "20000000",
+        "country": "USA",
+        "genres": ["Test Genre"],
+        "actors": ["Test Actor 2"],
+        "languages": ["Test Language"],
+    }
+
+    response_1 = await client.post(
+        f"{CINEMA_URL}/movies/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+        json=first_movie_payload,
+    )
+
+    assert response_1.status_code == 201
+
+    response_2 = await client.post(
+        f"{CINEMA_URL}/movies/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+        json=second_movie_payload,
+    )
+
+    assert response_2.status_code == 201
+
+    second_movie_id = response_2.json()["id"]
+
+    response = await client.patch(
+        f"{CINEMA_URL}/movies/{second_movie_id}/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+        json={
+            "name": first_movie_payload["name"],
+            "date": first_movie_payload["date"],
+        },
+    )
+
+    assert response.status_code == 409
+
+    detail = response.json()["detail"]
+
+    assert detail == (
+        f"A movie with the name '{first_movie_payload['name']}' "
+        f"and release date '{first_movie_payload['date']}' already exists."
+    )
