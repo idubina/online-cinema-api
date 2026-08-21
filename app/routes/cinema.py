@@ -16,3 +16,11 @@ async def create_movie(
     db: SessionDep, movie_data: schemas.MovieCreateSchema, current_use: ModeratorDep
 ):
     return await movie_services.create_movie(db=db, movie_data=movie_data)
+
+
+@router.get(
+    "/movies/{movie_id}/",
+    response_model=schemas.MovieDetailSchema,
+)
+async def get_movie(db: SessionDep, movie_id: int):
+    return await movie_services.read_movie(db=db, movie_id=movie_id)

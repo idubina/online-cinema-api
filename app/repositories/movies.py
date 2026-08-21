@@ -1,5 +1,6 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.movies import (
     CountryModel,
@@ -98,5 +99,17 @@ async def name_and_date_is_unique(
             MovieModel.date == movie_data.date,
         )
     )
-
     return existing_movie is None
+
+
+async def get_movie_by_id(db: AsyncSession, movie_id: id):
+    return await db.scalar(
+        select(MovieModel)
+        .options(
+            selectinload(MovieModel.country),
+            selectinload(MovieModel.genres),
+            selectinload(MovieModel.actors),
+            selectinload(MovieModel.languages),
+        )
+        .where(MovieModel.id == movie_id)
+    )

@@ -35,3 +35,13 @@ async def create_movie(
         db=db,
         movie_data=movie_data,
     )
+
+
+async def read_movie(db: AsyncSession, movie_id: int):
+    movie = await movies.get_movie_by_id(db=db, movie_id=movie_id)
+    if movie is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Movie with the given ID was not found.",
+        )
+    return movie
