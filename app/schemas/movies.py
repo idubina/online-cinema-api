@@ -67,3 +67,22 @@ class MovieDetailSchema(BaseModel):
     actors: list[ActorSchema]
     languages: list[LanguageSchema]
     model_config = ConfigDict(from_attributes=True)
+
+
+class MovieListDetailSchema(BaseModel):
+    id: int
+    name: str
+    date: datetime.date
+    score: float
+    overview: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MovieListResponseSchema(BaseModel):
+    movies: list[MovieListDetailSchema]
+    prev_page: str | None = None
+    next_page: str | None = None
+    total_pages: int
+    total_items: int
+

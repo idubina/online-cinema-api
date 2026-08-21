@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -113,3 +113,14 @@ async def get_movie_by_id(db: AsyncSession, movie_id: id):
         )
         .where(MovieModel.id == movie_id)
     )
+
+
+async def get_movie_items_count(db: AsyncSession):
+    return await db.scalar(select(func.count()).select_from(MovieModel))
+
+
+async def get_movie_list(db: AsyncSession, offset: int, per_page: int = 10):
+    stmt = await db.scalars(
+        select(MovieModel).order_by(MovieModel.id.desc()).offset(offset).limit(per_page)
+    )
+    return stmt.all()

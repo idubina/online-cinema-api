@@ -1,4 +1,7 @@
-from fastapi import APIRouter, status
+from typing import Annotated
+
+from fastapi import APIRouter, status, Request, Query
+from watchfiles import awatch
 
 from app.dependencies import SessionDep, ModeratorDep
 from app.schemas import movies as schemas
@@ -22,5 +25,17 @@ async def create_movie(
     "/movies/{movie_id}/",
     response_model=schemas.MovieDetailSchema,
 )
-async def get_movie(db: SessionDep, movie_id: int):
-    return await movie_services.read_movie(db=db, movie_id=movie_id)
+async def read_movie(db: SessionDep, movie_id: int):
+    return await movie_services.get_movie(db=db, movie_id=movie_id)
+
+
+@router.get("/movies/", response_model=schemas.MovieListResponseSchema)
+async def read_all_movies(
+    request: Request,
+    db: SessionDep,
+    page: Annotated[int, Query(ge=1)] = 1,
+    per_page: Annotated[int, Query(ge=1, le=20)] = 10,
+):
+    return await movie_services.get_movie_list(
+        request=request, db=db, page=page, per_page=per_page
+    )
