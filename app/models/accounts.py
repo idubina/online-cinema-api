@@ -13,6 +13,8 @@ from sqlalchemy import (
     Text,
     Date,
     UniqueConstraint,
+    Table,
+    Column,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
@@ -20,6 +22,10 @@ from app.database import Base
 from app.validators import accounts as validators
 from app.core.security import hash_password, verify_password
 from app.core.utils import generate_secure_token
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.models.movies import MovieModel
 
 
 class UserGroupEnum(str, enum.Enum):
@@ -138,6 +144,28 @@ class UserModel(Base):
         return validators.validate_email(value.lower())
 
 
+profiles_favorite_movies_table = Table(
+    "profiles_favorite_movies",
+    Base.metadata,
+    Column(
+        "profile_id",
+        ForeignKey(
+            "user_profiles.id",
+            ondelete="CASCADE",
+        ),
+        primary_key=True,
+    ),
+    Column(
+        "movie_id",
+        ForeignKey(
+            "movies.id",
+            ondelete="CASCADE",
+        ),
+        primary_key=True,
+    ),
+)
+
+
 class UserProfileModel(Base):
     __tablename__ = "user_profiles"
 
@@ -153,6 +181,11 @@ class UserProfileModel(Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True
     )
     user: Mapped[UserModel] = relationship("UserModel", back_populates="profile")
+
+    favorite_movies: Mapped[list["MovieModel"]] = relationship(
+        "MovieModel",
+        secondary=profiles_favorite_movies_table,
+    )
 
     __table_args__ = (UniqueConstraint("user_id"),)
 
