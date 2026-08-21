@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, status, Request, Query
 from watchfiles import awatch
 
-from app.dependencies import SessionDep, ModeratorDep
+from app.dependencies import SessionDep, ModeratorDep, CurrentUserDep
 from app.schemas import movies as schemas
 from app.services import movies as movie_services
 
@@ -63,5 +63,41 @@ async def delete_movie(
 ):
     await movie_services.delete_movie(
         db=db,
+        movie_id=movie_id,
+    )
+
+
+@router.put(
+    "/movies/{movie_id}/favorite/",
+    response_model=schemas.MessageResponseSchema,
+)
+async def add_movie_to_favorites(
+    db: SessionDep,
+    movie_id: int,
+    current_user: CurrentUserDep,
+):
+    await movie_services.add_movie_to_favorites(
+        db=db,
+        user_id=current_user.id,
+        movie_id=movie_id,
+    )
+
+    return schemas.MessageResponseSchema(
+        message="Movie added to favorites successfully."
+    )
+
+
+@router.delete(
+    "/movies/{movie_id}/favorite/",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def remove_movie_from_favorites(
+    db: SessionDep,
+    movie_id: int,
+    current_user: CurrentUserDep,
+):
+    await movie_services.remove_movie_from_favorites(
+        db=db,
+        user_id=current_user.id,
         movie_id=movie_id,
     )
