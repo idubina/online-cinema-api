@@ -86,3 +86,25 @@ class MovieListResponseSchema(BaseModel):
     total_pages: int
     total_items: int
 
+
+class MovieUpdateSchema(BaseModel):
+
+    name: str | None = Field(default=None, max_length=255)
+    date: datetime.date | None = None
+    score: float | None = Field(default=None, ge=0, le=100)
+    overview: str | None = None
+    status: MovieStatusEnum | None = None
+    budget: Decimal | None = Field(default=None, ge=0)
+    revenue: Decimal | None = Field(default=None, ge=0)
+
+    @field_validator("date")
+    @classmethod
+    def validate_date(cls, value: datetime.date | None) -> datetime.date | None:
+        if value and value > datetime.date.today() + datetime.timedelta(days=365):
+            raise ValueError("Release date cannot be more than one year in the future.")
+
+        return value
+
+
+class MessageResponseSchema(BaseModel):
+    message: str

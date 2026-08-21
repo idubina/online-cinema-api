@@ -91,12 +91,13 @@ async def create_movie(db: AsyncSession, movie_data: schemas.MovieCreateSchema):
 
 async def name_and_date_is_unique(
     db: AsyncSession,
-    movie_data: schemas.MovieCreateSchema,
+    movie_name,
+    movie_date,
 ) -> bool:
     existing_movie = await db.scalar(
         select(MovieModel).where(
-            MovieModel.name == movie_data.name,
-            MovieModel.date == movie_data.date,
+            MovieModel.name == movie_name,
+            MovieModel.date == movie_date,
         )
     )
     return existing_movie is None
@@ -124,3 +125,10 @@ async def get_movie_list(db: AsyncSession, offset: int, per_page: int = 10):
         select(MovieModel).order_by(MovieModel.id.desc()).offset(offset).limit(per_page)
     )
     return stmt.all()
+
+
+async def update_movie(db: AsyncSession, movie: MovieModel, update_data):
+    for field, value in update_data.items():
+        setattr(movie, field, value)
+
+    await db.commit()

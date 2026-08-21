@@ -1,19 +1,22 @@
 import math
+from datetime import date
 
 from fastapi import HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.movies import MovieModel
 from app.repositories import movies
 from app.schemas import movies as schemas
 
 
-async def movie_data_validation(
+async def movie_create_data_validation(
     db: AsyncSession,
-    movie_data: schemas.MovieCreateSchema,
+    movie_data: schemas.MovieCreateSchema | schemas.MovieUpdateSchema,
 ) -> None:
     if not await movies.name_and_date_is_unique(
         db=db,
-        movie_data=movie_data,
+        movie_name=movie_data.name,
+        movie_date=movie_data.date,
     ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -24,11 +27,33 @@ async def movie_data_validation(
         )
 
 
+async def movie_update_data_validation(
+    db: AsyncSession,
+    movie_name: str,
+    movie_date: date,
+    movie: MovieModel,
+) -> None:
+    if (
+        movie_name != movie.name or movie_date != movie.date
+    ) and not await movies.name_and_date_is_unique(
+        db=db,
+        movie_name=movie_name,
+        movie_date=movie_date,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"A movie with the name '{movie_name}' "
+                f"and release date '{movie_date}' already exists."
+            ),
+        )
+
+
 async def create_movie(
     db: AsyncSession,
     movie_data: schemas.MovieCreateSchema,
 ):
-    await movie_data_validation(
+    await movie_create_data_validation(
         db=db,
         movie_data=movie_data,
     )
@@ -108,3 +133,47 @@ async def get_movie_list(
         "total_pages": total_pages,
         "total_items": total_items,
     }
+
+
+async def update_movie(
+    db: AsyncSession,
+    movie_id: int,
+    movie_data: schemas.MovieUpdateSchema,
+):
+    movie = await movies.get_movie_by_id(
+        db=db,
+        movie_id=movie_id,
+    )
+
+    if movie is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Movie with the given ID was not found.",
+        )
+
+    update_data = movie_data.model_dump(
+        exclude_unset=True,
+        exclude_none=True,
+    )
+
+    if not update_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No fields were provided for update.",
+        )
+
+    movie_name = movie_data.name or movie.name
+    movie_date = movie_data.date or movie.date
+
+    await movie_update_data_validation(
+        db=db,
+        movie_name=movie_name,
+        movie_date=movie_date,
+        movie=movie,
+    )
+
+    return await movies.update_movie(
+        db=db,
+        movie=movie,
+        update_data=update_data,
+    )

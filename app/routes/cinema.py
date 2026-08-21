@@ -39,3 +39,14 @@ async def read_all_movies(
     return await movie_services.get_movie_list(
         request=request, db=db, page=page, per_page=per_page
     )
+
+
+@router.patch("/movies/{movie_id}/", response_model=schemas.MessageResponseSchema)
+async def update_movie(
+    db: SessionDep,
+    movie_id: int,
+    movie_data: schemas.MovieUpdateSchema,
+    current_user: ModeratorDep,
+):
+    await movie_services.update_movie(db=db, movie_id=movie_id, movie_data=movie_data)
+    return schemas.MessageResponseSchema(message="Movie updated successfully.")
