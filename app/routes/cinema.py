@@ -50,3 +50,18 @@ async def update_movie(
 ):
     await movie_services.update_movie(db=db, movie_id=movie_id, movie_data=movie_data)
     return schemas.MessageResponseSchema(message="Movie updated successfully.")
+
+
+@router.delete(
+    "/movies/{movie_id}/",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_movie(
+    db: SessionDep,
+    movie_id: int,
+    current_user: ModeratorDep,
+):
+    await movie_services.delete_movie(
+        db=db,
+        movie_id=movie_id,
+    )

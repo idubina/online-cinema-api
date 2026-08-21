@@ -177,3 +177,12 @@ async def update_movie(
         movie=movie,
         update_data=update_data,
     )
+
+async def delete_movie(db: AsyncSession, movie_id):
+    movie = await movies.get_movie_by_id(db=db, movie_id=movie_id)
+    if movie is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Movie with the given ID was not found.",
+        )
+    await movies.delete_movie(db=db, movie=movie)

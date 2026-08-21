@@ -132,3 +132,8 @@ async def update_movie(db: AsyncSession, movie: MovieModel, update_data):
         setattr(movie, field, value)
 
     await db.commit()
+
+
+async def delete_movie(db: AsyncSession, movie: MovieModel):
+    await db.delete(movie)
+    await db.commit()
