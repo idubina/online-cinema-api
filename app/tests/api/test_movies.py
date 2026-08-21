@@ -263,14 +263,15 @@ async def test_create_movie_with_same_date_and_name_error(
 
         assert read_response_data == create_response_data
 
-    async def test_read_movie_not_found_error(
-        client: AsyncClient, db_session: AsyncSession
-    ):
 
-        read_response = await client.get(f"{CINEMA_URL}/movies/1/")
+async def test_read_movie_not_found_error(
+    client: AsyncClient, db_session: AsyncSession
+):
 
-        assert read_response.status_code == 404
+    read_response = await client.get(f"{CINEMA_URL}/movies/1/")
 
-        detail = read_response.json()["detail"]
+    assert read_response.status_code == 404
 
-        assert detail == "Movie with the given ID was not found."
+    detail = read_response.json()["detail"]
+
+    assert detail == "Movie with the given ID was not found."
