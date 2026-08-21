@@ -85,6 +85,13 @@ class UserProfileCreateRequestSchema(BaseUserProfileSchema):
             raise RequestValidationError(error.errors()) from error
 
 
+class FavoriteMovieSchema(BaseModel):
+    id: int
+    name: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ProfileResponseSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -96,3 +103,4 @@ class ProfileResponseSchema(BaseModel):
     date_of_birth: date
     info: str
     avatar: HttpUrl
+    favorite_movies: list[FavoriteMovieSchema] = []
