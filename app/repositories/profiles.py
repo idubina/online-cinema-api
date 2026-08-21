@@ -2,17 +2,20 @@ from datetime import date
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from sqlalchemy.orm import selectinload
 
 from app.models.accounts import (
     UserProfileModel,
     GenderEnum,
 )
+from app.models.movies import MovieModel
 
 
 async def get_profile_by_user_id(db: AsyncSession, user_id):
     return await db.scalar(
-        select(UserProfileModel).where(UserProfileModel.user_id == user_id)
+        select(UserProfileModel)
+        .options(selectinload(UserProfileModel.favorite_movies))
+        .where(UserProfileModel.user_id == user_id)
     )
 
 
@@ -47,3 +50,21 @@ async def create_profile(
     except Exception:
         await db.rollback()
         raise
+
+
+async def add_movie_to_favorites(
+    db: AsyncSession,
+    profile: UserProfileModel,
+    movie: MovieModel,
+):
+    profile.favorite_movies.append(movie)
+    await db.commit()
+
+
+async def remove_movie_from_favorites(
+    db: AsyncSession,
+    profile: UserProfileModel,
+    movie: MovieModel,
+):
+    profile.favorite_movies.remove(movie)
+    await db.commit()

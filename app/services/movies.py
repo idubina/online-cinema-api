@@ -5,7 +5,7 @@ from fastapi import HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.movies import MovieModel
-from app.repositories import movies
+from app.repositories import movies, profiles
 from app.schemas import movies as schemas
 
 
@@ -178,6 +178,7 @@ async def update_movie(
         update_data=update_data,
     )
 
+
 async def delete_movie(db: AsyncSession, movie_id):
     movie = await movies.get_movie_by_id(db=db, movie_id=movie_id)
     if movie is None:
@@ -186,3 +187,78 @@ async def delete_movie(db: AsyncSession, movie_id):
             detail="Movie with the given ID was not found.",
         )
     await movies.delete_movie(db=db, movie=movie)
+
+
+async def add_movie_to_favorites(
+    db: AsyncSession,
+    user_id: int,
+    movie_id: int,
+):
+    profile = await profiles.get_profile_by_user_id(
+        db=db,
+        user_id=user_id,
+    )
+
+    if profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User profile not found.",
+        )
+
+    movie = await movies.get_movie_by_id(
+        db=db,
+        movie_id=movie_id,
+    )
+
+    if movie is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Movie with the given ID was not found.",
+        )
+
+    if movie not in profile.favorite_movies:
+        await profiles.add_movie_to_favorites(
+            db=db,
+            profile=profile,
+            movie=movie,
+        )
+
+
+async def remove_movie_from_favorites(
+    db: AsyncSession,
+    user_id: int,
+    movie_id: int,
+):
+    profile = await profiles.get_profile_by_user_id(
+        db=db,
+        user_id=user_id,
+    )
+
+    if profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User profile not found.",
+        )
+
+    movie = await movies.get_movie_by_id(
+        db=db,
+        movie_id=movie_id,
+    )
+
+    if movie is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Movie with the given ID was not found.",
+        )
+
+    if movie not in profile.favorite_movies:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Movie is not in favorites.",
+        )
+
+    await profiles.remove_movie_from_favorites(
+        db=db,
+        profile=profile,
+        movie=movie,
+    )

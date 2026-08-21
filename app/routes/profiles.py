@@ -72,4 +72,5 @@ async def get_profile(
         date_of_birth=profile.date_of_birth,
         info=profile.info,
         avatar=avatar_url,
+        favorite_movies=profile.favorite_movies,
     )
