@@ -796,3 +796,128 @@ async def test_update_movie_with_same_name_and_date_error(
         f"A movie with the name '{first_movie_payload['name']}' "
         f"and release date '{first_movie_payload['date']}' already exists."
     )
+
+
+async def test_delete_movie_success(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    authenticated_user,
+):
+    user, access_token = authenticated_user
+
+    current_user = await db_session.scalar(
+        select(UserModel).where(UserModel.id == user["id"])
+    )
+
+    current_user.group = await db_session.scalar(
+        select(UserGroupModel).where(UserGroupModel.name == UserGroupEnum.MODERATOR)
+    )
+
+    db_session.add(current_user)
+    await db_session.commit()
+
+    movie_payload = {
+        "name": "Test",
+        "date": "2020-08-20",
+        "score": 89,
+        "overview": "Tested",
+        "status": "Released",
+        "budget": "12345654",
+        "revenue": "76543245",
+        "country": "USA",
+        "genres": ["Test Genre"],
+        "actors": ["Test Actor 1", "Test Actor 2"],
+        "languages": ["Test Language"],
+    }
+
+    create_response = await client.post(
+        f"{CINEMA_URL}/movies/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+        json=movie_payload,
+    )
+
+    assert create_response.status_code == 201
+
+    movie_id = create_response.json()["id"]
+
+    response = await client.delete(
+        f"{CINEMA_URL}/movies/{movie_id}/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+    )
+
+    assert response.status_code == 204
+    assert response.content == b""
+
+    movie = await db_session.scalar(select(MovieModel).where(MovieModel.id == movie_id))
+
+    assert movie is None
+
+
+async def test_delete_movie_not_found(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    authenticated_user,
+):
+    user, access_token = authenticated_user
+
+    current_user = await db_session.scalar(
+        select(UserModel).where(UserModel.id == user["id"])
+    )
+
+    current_user.group = await db_session.scalar(
+        select(UserGroupModel).where(UserGroupModel.name == UserGroupEnum.MODERATOR)
+    )
+
+    db_session.add(current_user)
+    await db_session.commit()
+
+    response = await client.delete(
+        f"{CINEMA_URL}/movies/99999/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+    )
+
+    assert response.status_code == 404
+
+    detail = response.json()["detail"]
+
+    assert detail == "Movie with the given ID was not found."
+
+
+async def test_default_user_delete_movie_forbidden(
+    client: AsyncClient,
+    authenticated_user,
+):
+    access_token = authenticated_user[1]
+
+    response = await client.delete(
+        f"{CINEMA_URL}/movies/1/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+    )
+
+    assert response.status_code == 403
+
+    detail = response.json()["detail"]
+
+    assert detail == "You do not have permission to perform this action."
+
+
+async def test_unauthenticated_user_delete_movie_not_allowed(
+    client: AsyncClient,
+):
+    response = await client.delete(
+        f"{CINEMA_URL}/movies/1/",
+    )
+
+    assert response.status_code == 401
+
+    detail = response.json()["detail"]
+
+    assert detail == "Not authenticated"
