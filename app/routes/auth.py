@@ -13,6 +13,14 @@ router = APIRouter()
     response_model=auth_schemas.UserRegistrationResponseSchema,
     status_code=status.HTTP_201_CREATED,
     summary="Register user",
+    responses={
+        409: {
+            "description": "A user with this email already exists.",
+        },
+        500: {
+            "description": "An error occurred during user creation.",
+        },
+    },
 )
 async def register_user(
     db: SessionDep,
@@ -36,6 +44,14 @@ async def register_user(
     "/activate/",
     response_model=auth_schemas.MessageResponseSchema,
     summary="Activate account",
+    responses={
+        400: {
+            "description": (
+                "Invalid or expired activation token, "
+                "or the user account is already active."
+            ),
+        },
+    },
 )
 async def activate_user(
     db: SessionDep,
@@ -60,6 +76,11 @@ async def activate_user(
     "/activate/resend/",
     response_model=auth_schemas.MessageResponseSchema,
     summary="Resend account activation",
+    responses={
+        500: {
+            "description": "An error occurred while creating activation token.",
+        },
+    },
 )
 async def resend_activation(
     db: SessionDep,
@@ -124,6 +145,10 @@ async def request_password_reset_token(
     "/password-reset/complete/",
     response_model=auth_schemas.MessageResponseSchema,
     summary="Reset password",
+    responses={
+        400: {"description": "Invalid email or token."},
+        500: {"description": "An error occurred while resetting the password."},
+    },
 )
 async def reset_password(
     db: SessionDep,
@@ -142,7 +167,14 @@ async def reset_password(
 
 
 @router.post(
-    "/login/", response_model=auth_schemas.UserLoginResponseSchema, summary="Login user"
+    "/login/",
+    response_model=auth_schemas.UserLoginResponseSchema,
+    summary="Login user",
+    responses={
+        401: {"description": "Invalid email or password."},
+        403: {"description": "User account is not activated."},
+        500: {"description": "An error occurred while processing the request."},
+    },
 )
 async def login(db: SessionDep, user_data: auth_schemas.UserLoginRequestSchema):
     login_data = await auth_services.login_user(db=db, user_data=user_data)
@@ -153,6 +185,11 @@ async def login(db: SessionDep, user_data: auth_schemas.UserLoginRequestSchema):
     "/refresh/",
     response_model=auth_schemas.TokenRefreshResponseSchema,
     summary="Refresh access token",
+    responses={
+        400: {"description": "Refresh token has expired, or invalid refresh token."},
+        401: {"description": "Refresh token not found."},
+        404: {"description": "User not found."},
+    },
 )
 async def refresh_access_token(
     db: SessionDep, token_data: auth_schemas.TokenRefreshRequestSchema
@@ -164,7 +201,13 @@ async def refresh_access_token(
 
 
 @router.get(
-    "/me/", response_model=auth_schemas.UserReadSchema, summary="Get current user"
+    "/me/",
+    response_model=auth_schemas.UserReadSchema,
+    summary="Get current user",
+    responses={
+        401: {"description": "Access token is invalid, or has expired."},
+        404: {"description": "User not found."},
+    },
 )
 async def get_me(
     current_user: CurrentUserDep,
