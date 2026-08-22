@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     S3_SECRET_KEY: str
     S3_BUCKET_NAME: str
 
+    # docs
+    DOCS_USER: str
+    DOCS_PASSWORD: str
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
