@@ -13,6 +13,19 @@ router = APIRouter()
     "/{user_id}/profile/",
     response_model=schemas.ProfileResponseSchema,
     status_code=status.HTTP_201_CREATED,
+    summary="Create user profile",
+    responses={
+        400: {"description": "User already has a profile."},
+        401: {
+            "description": "Access token is invalid, or has expired, "
+            "or user not found or not active."
+        },
+        403: {"description": "You don't have permission to create this profile."},
+        404: {"description": "Current user not found."},
+        500: {
+            "description": "Failed to upload avatar, or failed to create user profile."
+        },
+    },
 )
 async def create_profile(
     db: SessionDep,
@@ -48,6 +61,14 @@ async def create_profile(
 @router.get(
     "/{user_id}/profile/",
     response_model=schemas.ProfileResponseSchema,
+    summary="Get user profile",
+    responses={
+        401: {"description": "Access token is invalid, or has expired."},
+        403: {"description": "You don't have permission to view this profile."},
+        404: {
+            "description": "Current user not found, or profile user not found or not active."
+        },
+    },
 )
 async def get_profile(
     db: SessionDep,
