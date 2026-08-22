@@ -14,6 +14,7 @@ router = APIRouter()
     "/movies/",
     response_model=schemas.MovieDetailSchema,
     status_code=status.HTTP_201_CREATED,
+    summary="Create a movie",
 )
 async def create_movie(
     db: SessionDep, movie_data: schemas.MovieCreateSchema, current_use: ModeratorDep
@@ -24,12 +25,15 @@ async def create_movie(
 @router.get(
     "/movies/{movie_id}/",
     response_model=schemas.MovieDetailSchema,
+    summary="Get movie details",
 )
 async def read_movie(db: SessionDep, movie_id: int):
     return await movie_services.get_movie(db=db, movie_id=movie_id)
 
 
-@router.get("/movies/", response_model=schemas.MovieListResponseSchema)
+@router.get(
+    "/movies/", response_model=schemas.MovieListResponseSchema, summary="Get movie list"
+)
 async def read_all_movies(
     request: Request,
     db: SessionDep,
@@ -41,7 +45,11 @@ async def read_all_movies(
     )
 
 
-@router.patch("/movies/{movie_id}/", response_model=schemas.MessageResponseSchema)
+@router.patch(
+    "/movies/{movie_id}/",
+    response_model=schemas.MessageResponseSchema,
+    summary="Update a movie",
+)
 async def update_movie(
     db: SessionDep,
     movie_id: int,
@@ -55,6 +63,7 @@ async def update_movie(
 @router.delete(
     "/movies/{movie_id}/",
     status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a movie",
 )
 async def delete_movie(
     db: SessionDep,
@@ -70,6 +79,7 @@ async def delete_movie(
 @router.put(
     "/movies/{movie_id}/favorite/",
     response_model=schemas.MessageResponseSchema,
+    summary="Add movie to favorites",
 )
 async def add_movie_to_favorites(
     db: SessionDep,
@@ -90,6 +100,7 @@ async def add_movie_to_favorites(
 @router.delete(
     "/movies/{movie_id}/favorite/",
     status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove movie from favorites",
 )
 async def remove_movie_from_favorites(
     db: SessionDep,

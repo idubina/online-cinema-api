@@ -13,6 +13,7 @@ router = APIRouter()
     "/{user_id}/profile/",
     response_model=schemas.ProfileResponseSchema,
     status_code=status.HTTP_201_CREATED,
+    summary="Create user profile",
 )
 async def create_profile(
     db: SessionDep,
@@ -48,6 +49,7 @@ async def create_profile(
 @router.get(
     "/{user_id}/profile/",
     response_model=schemas.ProfileResponseSchema,
+    summary="Get user profile",
 )
 async def get_profile(
     db: SessionDep,

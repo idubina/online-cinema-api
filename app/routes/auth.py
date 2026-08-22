@@ -12,6 +12,7 @@ router = APIRouter()
     "/register/",
     response_model=auth_schemas.UserRegistrationResponseSchema,
     status_code=status.HTTP_201_CREATED,
+    summary="Register user",
 )
 async def register_user(
     db: SessionDep,
@@ -34,6 +35,7 @@ async def register_user(
 @router.post(
     "/activate/",
     response_model=auth_schemas.MessageResponseSchema,
+    summary="Activate account",
 )
 async def activate_user(
     db: SessionDep,
@@ -57,6 +59,7 @@ async def activate_user(
 @router.post(
     "/activate/resend/",
     response_model=auth_schemas.MessageResponseSchema,
+    summary="Resend account activation",
 )
 async def resend_activation(
     db: SessionDep,
@@ -93,6 +96,7 @@ async def resend_activation(
 @router.post(
     "/password-reset/request/",
     response_model=auth_schemas.MessageResponseSchema,
+    summary="Request password reset",
 )
 async def request_password_reset_token(
     db: SessionDep,
@@ -119,6 +123,7 @@ async def request_password_reset_token(
 @router.post(
     "/password-reset/complete/",
     response_model=auth_schemas.MessageResponseSchema,
+    summary="Reset password",
 )
 async def reset_password(
     db: SessionDep,
@@ -137,8 +142,7 @@ async def reset_password(
 
 
 @router.post(
-    "/login/",
-    response_model=auth_schemas.UserLoginResponseSchema,
+    "/login/", response_model=auth_schemas.UserLoginResponseSchema, summary="Login user"
 )
 async def login(db: SessionDep, user_data: auth_schemas.UserLoginRequestSchema):
     login_data = await auth_services.login_user(db=db, user_data=user_data)
@@ -148,6 +152,7 @@ async def login(db: SessionDep, user_data: auth_schemas.UserLoginRequestSchema):
 @router.post(
     "/refresh/",
     response_model=auth_schemas.TokenRefreshResponseSchema,
+    summary="Refresh access token",
 )
 async def refresh_access_token(
     db: SessionDep, token_data: auth_schemas.TokenRefreshRequestSchema
@@ -159,8 +164,7 @@ async def refresh_access_token(
 
 
 @router.get(
-    "/me/",
-    response_model=auth_schemas.UserReadSchema,
+    "/me/", response_model=auth_schemas.UserReadSchema, summary="Get current user"
 )
 async def get_me(
     current_user: CurrentUserDep,
