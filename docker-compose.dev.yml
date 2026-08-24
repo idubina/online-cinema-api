@@ -118,19 +118,6 @@ services:
       mailpit:
         condition: service_started
 
-    develop:
-      watch:
-        - action: sync
-          path: ./app
-          target: /code/app
-
-        - action: rebuild
-          path: pyproject.toml
-
-        - action: rebuild
-          path: poetry.lock
-
-
   celery_worker:
     build:
       context: .
