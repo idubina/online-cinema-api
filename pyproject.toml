@@ -3,7 +3,7 @@ name = "online-cinema"
 version = "0.1.0"
 description = "FastAPI-based online cinema service with user management, movie catalog, orders, and payments."
 authors = [
-    {name = "Your Name",email = "you@example.com"}
+    {name = "Illia Dubina",email = "armahanz.music@gmail.com"}
 ]
 license = "MIT"
 readme = "README.md"

@@ -24,7 +24,7 @@ router = APIRouter()
     },
 )
 async def create_movie(
-    db: SessionDep, movie_data: schemas.MovieCreateSchema, current_use: ModeratorDep
+    db: SessionDep, movie_data: schemas.MovieCreateSchema, current_user: ModeratorDep
 ):
     return await movie_services.create_movie(db=db, movie_data=movie_data)
 
@@ -91,7 +91,11 @@ async def update_movie(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a movie",
     responses={
-        404: {"description": "Movie with the given ID was not found."},
+        401: {"description": "Access token is invalid, or has expired."},
+        403: {"description": "You do not have permission to perform this action."},
+        404: {
+            "description": "User not found, or movie with the given ID was not found."
+        },
     },
 )
 async def delete_movie(
